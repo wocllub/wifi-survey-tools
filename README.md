@@ -2,6 +2,15 @@
 
 Windows에서 설치 없이 실행하는 Wi-Fi 측정 도구 2종입니다.
 
+## 다운로드
+
+[최신 릴리스](https://github.com/wocllub/wifi-survey-tools/releases/latest)에서 EXE 파일을 내려받아 더블클릭하면 바로 실행됩니다.
+
+- `WifiSignalChecker.exe`: Wi-Fi 신호 체크
+- `WifiCoveragePlanner.exe`: Wi-Fi 음영지역 분석기
+
+실행 파일에 코드 서명이 없어 처음 실행할 때 Windows SmartScreen 경고가 나올 수 있습니다. 릴리스에 적힌 SHA-256 값으로 파일을 확인한 뒤 **추가 정보 > 실행**을 선택하세요.
+
 ## 프로그램
 
 ### Wi-Fi 신호 체크 (`WifiSignalChecker`)
@@ -55,3 +64,7 @@ Windows 10 이상에 기본 포함된 .NET Framework 4.x 컴파일러를 사용�
 - Windows 10 / 11 (x64)
 - Wi-Fi 어댑터
 - 주변 네트워크 검색을 위한 Windows 위치 서비스
+
+## 라이선스
+
+[MIT License](LICENSE)로 배포합니다. 저작권 및 라이선스 고지를 유지하면 누구나 자유롭게 사용, 수정, 재배포할 수 있습니다.
