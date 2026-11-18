@@ -1,0 +1,41 @@
+name: iOS tests
+
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Choose simulator
+        id: simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)['devices']
+          runtimes = sorted((k for k in data if 'iOS' in k), reverse=True)
+          print(next(d['udid'] for r in runtimes for d in data[r] if d['name'].startswith('iPhone')))
+          ")
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -project WifiPlanner.xcodeproj \
+            -scheme WifiPlanner \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO
