@@ -2,6 +2,11 @@
 *.exe
 *.pdb
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+
 # Local test and survey data
 test-output/
 *.wifiplan

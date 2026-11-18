@@ -11,6 +11,8 @@ Windows에서 설치 없이 실행하는 Wi-Fi 측정 도구 2종입니다.
 
 실행 파일에 코드 서명이 없어 처음 실행할 때 Windows SmartScreen 경고가 나올 수 있습니다. 릴리스에 적힌 SHA-256 값으로 파일을 확인한 뒤 **추가 정보 > 실행**을 선택하세요.
 
+Linux 버전은 [linux 폴더의 안내](linux/README.md)를 참고하세요.
+
 ## 프로그램
 
 ### Wi-Fi 신호 체크 (`WifiSignalChecker`)
