@@ -1,0 +1,8 @@
+# Build output
+*.exe
+*.pdb
+
+# Local test and survey data
+test-output/
+*.wifiplan
+*.csv
