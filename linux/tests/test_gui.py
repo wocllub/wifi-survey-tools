@@ -60,8 +60,9 @@ class Planner(unittest.TestCase):
             self.w.vendor_box.setCurrentText(vendor)
             self.click(4 + i * 7, 10)
         self.assertEqual(tuple(a.Vendor for a in self.w.project.Aps), vendors)
-        self.assertEqual([a.Name for a in self.w.project.Aps[3:]], ["GWN7664-1", "WA7638-1"])
-        self.assertTrue(self.w.project.Aps[4].Has6)
+        self.assertEqual([a.Name for a in self.w.project.Aps[3:]], ["GWN7672-1", "WA7638-1"])
+        self.assertTrue(self.w.project.Aps[3].Has6 and self.w.project.Aps[4].Has6)
+        self.assertEqual(self.w.project.Aps[3].Gain6, 5.5)
         self.assertAlmostEqual(self.w.project.Aps[0].X, 4, delta=0.2)
         self.assertTrue(self.w.ap_panel.isVisible())
 
