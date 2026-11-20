@@ -110,6 +110,12 @@ enum Catalog {
         ApModel(vendor: "Juniper Mist", name: "AP34", gen: "Wi-Fi 6E", g24: 4, g5: 6, g6: 6, verified: true),
         ApModel(vendor: "Juniper Mist", name: "AP43", gen: "Wi-Fi 6", g24: 4, g5: 6, g6: nil, verified: true),
         ApModel(vendor: "Juniper Mist", name: "AP32", gen: "Wi-Fi 6", g24: 5, g5: 6, g6: nil, verified: true),
+        ApModel(vendor: "Grandstream", name: "GWN7664", gen: "Wi-Fi 6", g24: 3, g5: 4, g6: nil, verified: true),
+        ApModel(vendor: "Grandstream", name: "GWN7664ELR", gen: "Wi-Fi 6", g24: 5.5, g5: 6.5, g6: nil, verified: true),
+        ApModel(vendor: "Grandstream", name: "GWN7660", gen: "Wi-Fi 6", g24: 3, g5: 4, g6: nil, verified: false),
+        ApModel(vendor: "H3C", name: "WA7638", gen: "Wi-Fi 7", g24: 4, g5: 5, g6: 5, verified: false),
+        ApModel(vendor: "H3C", name: "WA6638", gen: "Wi-Fi 6", g24: 4.8, g5: 5.3, g6: nil, verified: true),
+        ApModel(vendor: "H3C", name: "WA6628", gen: "Wi-Fi 6", g24: 3, g5: 4, g6: nil, verified: false),
         ApModel(vendor: "기타", name: "일반 AP (직접 입력)", gen: "-", g24: 4, g5: 5, g6: 5, verified: false),
     ]
 
@@ -126,6 +132,8 @@ enum Catalog {
         case "Cisco": return "C"
         case "HPE Aruba": return "A"
         case "Juniper Mist": return "M"
+        case "Grandstream": return "G"
+        case "H3C": return "H"
         default: return "AP"
         }
     }

@@ -15,6 +15,8 @@ enum PlanColors {
         case "Cisco": return rgb(0, 92, 170)
         case "HPE Aruba": return rgb(214, 96, 16)
         case "Juniper Mist": return rgb(0, 128, 120)
+        case "Grandstream": return rgb(120, 70, 180)
+        case "H3C": return rgb(150, 110, 0)
         default: return rgb(90, 96, 108)
         }
     }

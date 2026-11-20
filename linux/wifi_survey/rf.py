@@ -137,11 +137,18 @@ CATALOG: Tuple[ApModel, ...] = (
     ApModel("Juniper Mist", "AP34", "Wi-Fi 6E", 4, 6, 6, True),
     ApModel("Juniper Mist", "AP43", "Wi-Fi 6", 4, 6, None, True),
     ApModel("Juniper Mist", "AP32", "Wi-Fi 6", 5, 6, None, True),
+    ApModel("Grandstream", "GWN7664", "Wi-Fi 6", 3, 4, None, True),
+    ApModel("Grandstream", "GWN7664ELR", "Wi-Fi 6", 5.5, 6.5, None, True),
+    ApModel("Grandstream", "GWN7660", "Wi-Fi 6", 3, 4, None, False),
+    ApModel("H3C", "WA7638", "Wi-Fi 7", 4, 5, 5, False),
+    ApModel("H3C", "WA6638", "Wi-Fi 6", 4.8, 5.3, None, True),
+    ApModel("H3C", "WA6628", "Wi-Fi 6", 3, 4, None, False),
     ApModel("기타", "일반 AP (직접 입력)", "-", 4, 5, 5, False),
 )
 VENDORS = tuple(dict.fromkeys(m.vendor for m in CATALOG))
-VENDOR_COLORS = {"Cisco": "#005caa", "HPE Aruba": "#d66010", "Juniper Mist": "#008078"}
-VENDOR_MARKS = {"Cisco": "C", "HPE Aruba": "A", "Juniper Mist": "M"}
+VENDOR_COLORS = {"Cisco": "#005caa", "HPE Aruba": "#d66010", "Juniper Mist": "#008078",
+                 "Grandstream": "#7846b4", "H3C": "#966e00"}
+VENDOR_MARKS = {"Cisco": "C", "HPE Aruba": "A", "Juniper Mist": "M", "Grandstream": "G", "H3C": "H"}
 
 
 def new_ap(model: ApModel, name: str, x: float, y: float) -> ApItem:

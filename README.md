@@ -29,7 +29,7 @@ Linux 버전은 [linux 폴더의 안내](linux/README.md)를, iOS 버전은 [ios
 2D 도면에 AP를 배치해 신호를 예측하고, 현장 실측으로 음영지역을 확인합니다.
 
 - 도면 이미지(PNG, JPG, BMP, TIFF) 불러오기와 축척 설정
-- Cisco, HPE Aruba, Juniper Mist AP 제품 선택과 배치
+- Cisco, HPE Aruba, Juniper Mist, Grandstream, H3C AP 제품 선택과 배치
 - 벽 재질별 감쇠를 반영한 2.4 / 5 / 6 GHz 히트맵
 - 음영지역 표시, 커버리지 비율, 음영 면적 계산
 - 현장 실측 히트맵과 예측 대비 오차 표시

@@ -55,11 +55,14 @@ class Planner(unittest.TestCase):
 
     def test_every_vendor_can_be_placed(self):
         self.w.set_tool(pa.PLACE_AP)
-        for i, vendor in enumerate(("Cisco", "HPE Aruba", "Juniper Mist")):
+        vendors = ("Cisco", "HPE Aruba", "Juniper Mist", "Grandstream", "H3C")
+        for i, vendor in enumerate(vendors):
             self.w.vendor_box.setCurrentText(vendor)
-            self.click(5 + i * 10, 10)
-        self.assertEqual([a.Vendor for a in self.w.project.Aps], ["Cisco", "HPE Aruba", "Juniper Mist"])
-        self.assertAlmostEqual(self.w.project.Aps[0].X, 5, delta=0.2)
+            self.click(4 + i * 7, 10)
+        self.assertEqual(tuple(a.Vendor for a in self.w.project.Aps), vendors)
+        self.assertEqual([a.Name for a in self.w.project.Aps[3:]], ["GWN7664-1", "WA7638-1"])
+        self.assertTrue(self.w.project.Aps[4].Has6)
+        self.assertAlmostEqual(self.w.project.Aps[0].X, 4, delta=0.2)
         self.assertTrue(self.w.ap_panel.isVisible())
 
     def test_walls_undo_select_delete(self):

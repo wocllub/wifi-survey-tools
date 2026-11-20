@@ -105,6 +105,12 @@ namespace WifiCoveragePlanner
             new ApModel("Juniper Mist", "AP34", "Wi-Fi 6E", 4, 6, 6, true),
             new ApModel("Juniper Mist", "AP43", "Wi-Fi 6", 4, 6, None, true),
             new ApModel("Juniper Mist", "AP32", "Wi-Fi 6", 5, 6, None, true),
+            new ApModel("Grandstream", "GWN7664", "Wi-Fi 6", 3, 4, None, true),
+            new ApModel("Grandstream", "GWN7664ELR", "Wi-Fi 6", 5.5, 6.5, None, true),
+            new ApModel("Grandstream", "GWN7660", "Wi-Fi 6", 3, 4, None, false),
+            new ApModel("H3C", "WA7638", "Wi-Fi 7", 4, 5, 5, false),
+            new ApModel("H3C", "WA6638", "Wi-Fi 6", 4.8, 5.3, None, true),
+            new ApModel("H3C", "WA6628", "Wi-Fi 6", 3, 4, None, false),
             new ApModel("기타", "일반 AP (직접 입력)", "-", 4, 5, 5, false),
         };
         public static string[] Vendors { get { return All.Select(m => m.Vendor).Distinct().ToArray(); } }
@@ -115,12 +121,14 @@ namespace WifiCoveragePlanner
                 case "Cisco": return Color.FromArgb(0, 92, 170);
                 case "HPE Aruba": return Color.FromArgb(214, 96, 16);
                 case "Juniper Mist": return Color.FromArgb(0, 128, 120);
+                case "Grandstream": return Color.FromArgb(120, 70, 180);
+                case "H3C": return Color.FromArgb(150, 110, 0);
                 default: return Color.FromArgb(90, 96, 108);
             }
         }
         public static string VendorMark(string v)
         {
-            switch (v) { case "Cisco": return "C"; case "HPE Aruba": return "A"; case "Juniper Mist": return "M"; default: return "AP"; }
+            switch (v) { case "Cisco": return "C"; case "HPE Aruba": return "A"; case "Juniper Mist": return "M"; case "Grandstream": return "G"; case "H3C": return "H"; default: return "AP"; }
         }
     }
 

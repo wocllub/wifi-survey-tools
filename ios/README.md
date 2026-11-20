@@ -5,7 +5,7 @@ iPhone과 iPad에서 2D 도면에 AP를 배치하고 신호와 음영지역을 �
 ## 기능
 
 - 사진 또는 파일에서 도면 불러오기, 축척 설정
-- Cisco, HPE Aruba, Juniper Mist AP 배치와 출력 설정
+- Cisco, HPE Aruba, Juniper Mist, Grandstream, H3C AP 배치와 출력 설정
 - 벽 재질별 감쇠를 반영한 2.4 / 5 / 6 GHz 히트맵
 - 음영지역 표시, 커버리지 비율, 음영 면적 계산
 - 측정값 직접 입력을 통한 실측 히트맵
