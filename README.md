@@ -95,7 +95,7 @@ dotnet run --project tests/logic     # net8.0, 44개 시험
 
 ## 디자인 문서
 
-- [`docs/DESIGN-AUDIT.md`](docs/DESIGN-AUDIT.md) — 기존 UI 진단(무엇이 왜 저렴해 보이는지)
+- [`docs/DESIGN-AUDIT.md`](docs/DESIGN-AUDIT.md) — 기존 UI 진단(디자인 개선)
 - [`docs/mockup/design-review.html`](docs/mockup/design-review.html) — 개선 전/후 목업(애니메이션 포함)
 - [`docs/BUILD-VERIFICATION.md`](docs/BUILD-VERIFICATION.md) — 빌드·검증 기록과 한계
 - [`docs/WINDOWS-CHECKLIST.md`](docs/WINDOWS-CHECKLIST.md) — Windows에서 확인할 체크리스트
