@@ -14,6 +14,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using WifiSurvey.Design;
+using WifiSurvey.Core;
 
 namespace WifiSignalChecker
 {
@@ -418,434 +420,1139 @@ namespace WifiSignalChecker
     }
 
     // ---- 화면 공통 ----
-    static class Ui
+    // ---- 화면: 다크 프리미엄 재설계 ----
+    static class Fmt
     {
-        public static float K = 1f;
-        public static int S(int v) { return (int)Math.Round(v * K); }
-        public static readonly Color Bg = Color.FromArgb(243, 245, 248);
-        public static readonly Color Card = Color.White;
-        public static readonly Color Border = Color.FromArgb(222, 226, 232);
-        public static readonly Color Ink = Color.FromArgb(28, 33, 41);
-        public static readonly Color Muted = Color.FromArgb(98, 107, 120);
-        public static readonly Color Accent = Color.FromArgb(0, 103, 192);
-        public const string FontName = "Malgun Gothic";
-
-        public static Font F(float pt, FontStyle st = FontStyle.Regular) { return new Font(FontName, pt, st); }
-
-        public static void Text(Graphics g, string s, Font f, Color c, Rectangle r, TextFormatFlags extra = TextFormatFlags.Left)
+        public static string Ago(DateTime t)
         {
-            TextRenderer.DrawText(g, s, f, r, c, extra | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
+            if (t == DateTime.MinValue) return "스캔 전";
+            double s = (DateTime.Now - t).TotalSeconds;
+            if (s < 60) return (int)s + "초 전 스캔";
+            if (s < 3600) return (int)(s / 60) + "분 전 스캔";
+            return t.ToString("HH:mm") + " 스캔";
+        }
+        public static int BandIndex(string band)
+        {
+            if (band == null) return 0;
+            if (band.StartsWith("5")) return 1;
+            if (band.StartsWith("6")) return 2;
+            return 0;
         }
     }
 
-    class Level
+    class TopBar : Widget
     {
-        public string Name; public Color Color; public int Bars;
-        public static Level Of(int rssi)
-        {
-            if (rssi >= -50) return new Level { Name = "매우 좋음", Color = Color.FromArgb(14, 128, 88), Bars = 5 };
-            if (rssi >= -60) return new Level { Name = "좋음", Color = Color.FromArgb(46, 125, 50), Bars = 4 };
-            if (rssi >= -70) return new Level { Name = "보통", Color = Color.FromArgb(176, 112, 0), Bars = 3 };
-            if (rssi >= -80) return new Level { Name = "약함", Color = Color.FromArgb(205, 84, 24), Bars = 2 };
-            return new Level { Name = "매우 약함", Color = Color.FromArgb(196, 43, 48), Bars = 1 };
-        }
-    }
+        public Segmented Tabs = new Segmented();
+        public UiButton Scan = new UiButton(), Log = new UiButton(), Shot = new UiButton();
+        public bool Live;
+        readonly Spring pulse = new Spring(0);
 
-    abstract class CardControl : Control
-    {
-        protected CardControl()
+        public TopBar()
         {
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            BackColor = Ui.Bg;
-            Margin = new Padding(Ui.S(4));
+            Height = Theme.S(64);
+            Tabs.Items.Add("실시간"); Tabs.Items.Add("세션"); Tabs.Items.Add("채널"); Tabs.Items.Add("설정");
+            Scan.Label = "스캔"; Scan.Glyph = Glyph.Scan; Scan.Kind = Btn.Subtle;
+            Log.Label = "기록"; Log.Glyph = Glyph.Record; Log.Kind = Btn.Subtle;
+            Shot.Label = "PNG"; Shot.Glyph = Glyph.Export; Shot.Kind = Btn.Subtle;
+            Controls.Add(Tabs); Controls.Add(Scan); Controls.Add(Log); Controls.Add(Shot);
+            foreach (Control c in Controls) c.BackColor = Theme.Bg;
+            Live = true;
+            Poke();
+        }
+        public void SetPulse(bool on) { Live = on; Poke(); }
+        protected override bool Step(float dt)
+        {
+            if (!Live) return false;
+            double t = (DateTime.Now.TimeOfDay.TotalMilliseconds % 2000) / 2000.0;
+            pulse.Set(0.45 + 0.55 * (0.5 + 0.5 * Math.Sin(t * Math.PI * 2)));
+            return true;
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            int h = Theme.S(32);
+            int right = Width - Theme.S(16);
+            Shot.SetBounds(right - Theme.S(70), Theme.S(16), Theme.S(70), h);
+            Log.SetBounds(Shot.Left - Theme.S(8) - Theme.S(66), Theme.S(16), Theme.S(66), h);
+            Scan.SetBounds(Log.Left - Theme.S(8) - Theme.S(70), Theme.S(16), Theme.S(70), h);
+            int tabW = Theme.S(296);
+            Tabs.SetBounds(Math.Max(Theme.S(320), (Width - tabW) / 2), Theme.S(12), tabW, Theme.S(32));
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
-            int d = Ui.S(12);
-            using (GraphicsPath p = new GraphicsPath())
+            FillBg(g);
+            using (Pen p = new Pen(Theme.Border)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
+            int x = Theme.S(20);
+            Theme.Fill(g, new Rectangle(x, Theme.S(16), Theme.S(32), Theme.S(32)), Theme.S(9), Theme.AccentSoft);
+            Icons.Draw(g, Glyph.Wifi, new RectangleF(x + Theme.S(6), Theme.S(22), Theme.S(20), Theme.S(20)), Theme.Accent, 2f);
+            x += Theme.S(44);
+            Theme.Text(g, "무선 시그널 분석", Theme.F(13f, FontStyle.Bold), Theme.Ink, new Rectangle(x, Theme.S(12), Theme.S(230), Theme.S(22)));
+            Theme.Text(g, "Wi-Fi 신호 체크 · 실시간 계측", Theme.F(9f), Theme.TextMute, new Rectangle(x, Theme.S(33), Theme.S(230), Theme.S(18)));
+            if (Live && Scan.Left > Tabs.Right + Theme.S(60))
             {
-                p.AddArc(r.X, r.Y, d, d, 180, 90);
-                p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-                p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-                p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-                p.CloseFigure();
-                using (SolidBrush b = new SolidBrush(Ui.Card)) g.FillPath(b, p);
-                using (Pen pen = new Pen(Ui.Border)) g.DrawPath(pen, p);
+                Rectangle pill = new Rectangle(Scan.Left - Theme.S(8) - Theme.S(62), Theme.S(20), Theme.S(62), Theme.S(24));
+                Theme.Fill(g, pill, Theme.S(12), Theme.Alpha(Theme.Lv5, 26));
+                Theme.Stroke(g, pill, Theme.S(12), Theme.Alpha(Theme.Lv5, 70));
+                Theme.Glow(g, new PointF(pill.X + Theme.S(13), pill.Y + pill.Height / 2f), Theme.S(7) * (float)pulse.Value + Theme.S(3), Theme.Lv5, 3);
+                using (SolidBrush b = new SolidBrush(Theme.Lv5))
+                    g.FillEllipse(b, pill.X + Theme.S(9), pill.Y + pill.Height / 2f - Theme.S(3), Theme.S(6), Theme.S(6));
+                Theme.Text(g, "LIVE", Theme.F(8.5f, FontStyle.Bold), Theme.Lv5, new Rectangle(pill.X + Theme.S(19), pill.Y, pill.Width - Theme.S(21), pill.Height));
             }
-            PaintContent(g, r);
         }
-        protected abstract void PaintContent(Graphics g, Rectangle r);
     }
 
-    class HeaderCard : CardControl
+    // 히어로 카드: SSID + 큰 dBm + 등급 + 조언
+    class HeroCard : Card
     {
-        readonly Font small = Ui.F(9.5f), big = Ui.F(21f, FontStyle.Bold), dbm = Ui.F(30f, FontStyle.Bold), level = Ui.F(10.5f, FontStyle.Bold);
         Sample s = new Sample();
-        string advice = "측정을 시작하는 중입니다...";
-        public void Set(Sample sample, string adviceText) { s = sample; advice = adviceText; Invalidate(); }
+        string advice = "측정을 시작하는 중입니다";
+        readonly Spring dbm = new Spring(-100);
+        readonly LevelBars bars = new LevelBars();
 
-        protected override void PaintContent(Graphics g, Rectangle r)
+        public HeroCard()
         {
-            int pad = Ui.S(20), rightZone = Ui.S(350);
-            int textW = Math.Max(Ui.S(120), r.Width - pad * 2 - rightZone);
-            string caption = s.Connected ? "연결된 네트워크" : (s.HasAdapter ? "연결 상태" : "Wi-Fi");
-            string title = s.Connected ? s.Ssid : (s.Error.Length > 0 ? "확인 필요" : "연결 안 됨");
-            Ui.Text(g, caption, small, Ui.Muted, new Rectangle(pad, Ui.S(12), textW, Ui.S(22)));
-            Ui.Text(g, title, big, Ui.Ink, new Rectangle(pad, Ui.S(34), textW, Ui.S(46)));
-            Ui.Text(g, s.Error.Length > 0 ? s.Error : advice, small, Ui.Muted, new Rectangle(pad, Ui.S(82), textW, Ui.S(24)));
-
-            int barW = Ui.S(13), gap = Ui.S(6), barsW = barW * 5 + gap * 4;
-            int barsRight = r.Right - pad, bottom = r.Bottom - Ui.S(24);
-            Level lv = s.Connected ? Level.Of(s.Rssi) : null;
-            for (int i = 0; i < 5; i++)
+            Pad = 20;
+            bars.BackColor = Theme.Surface;
+            Controls.Add(bars);
+        }
+        public void Set(Sample sample, string text, bool measuring)
+        {
+            s = sample; advice = text;
+            bool ok = s.Connected && s.Rssi < 0;
+            dbm.To(ok ? s.Rssi : -100);
+            bars.Set(s.Rssi, !ok);
+            bars.Pulsing = measuring;
+            Poke();
+        }
+        protected override bool Step(float dt) { dbm.Step(dt); return !dbm.Settled; }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            bars.SetBounds(Width - Theme.S(96), Theme.S(28), Theme.S(46), Theme.S(56));
+        }
+        protected override void PaintBody(Graphics g)
+        {
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            int p = Theme.S(Pad);
+            Theme.CaptionText(g, s.Connected ? "연결된 네트워크" : s.HasAdapter ? "연결 상태" : "어댑터", Theme.TextMute, new Rectangle(p, p, Width / 2, Theme.S(14)));
+            Theme.Text(g, s.Connected ? s.Ssid : (s.Error.Length > 0 ? "확인 필요" : "연결 안 됨"),
+                Theme.F(15f, FontStyle.Bold), s.Connected ? Theme.Ink : Theme.TextDim, new Rectangle(p, p + Theme.S(18), Width - p * 2 - Theme.S(40), Theme.S(26)));
+            bool ok = s.Connected && s.Rssi < 0;
+            Color tone = ok ? Theme.Tone(s.Rssi) : Theme.None;
+            string val = ok ? Math.Round(dbm.Value).ToString("0") : "—";
+            Theme.Mono(g, val, Theme.F(42f, FontStyle.Bold), tone, new Rectangle(p, p + Theme.S(46), Theme.S(170), Theme.S(54)), Theme.Align.Left);
+            int vw = TextRenderer.MeasureText(g, val, Theme.F(42f, FontStyle.Bold), Size.Empty, TextFormatFlags.NoPadding).Width;
+            Theme.Text(g, "dBm", Theme.F(10.5f, FontStyle.Bold), Theme.Alpha(tone, 200), new Rectangle(p + Math.Min(vw, Theme.S(160)) + Theme.S(5), p + Theme.S(74), Theme.S(40), Theme.S(18)));
+            if (ok)
             {
-                int h = Ui.S(18 + i * 13);
-                Rectangle b = new Rectangle(barsRight - barsW + i * (barW + gap), bottom - h, barW, h);
-                using (SolidBrush br = new SolidBrush(lv != null && i < lv.Bars ? lv.Color : Color.FromArgb(226, 230, 236))) g.FillRectangle(br, b);
+                string name = SignalMath.LevelName(SignalMath.LevelOf(s.Rssi));
+                int cw = TextRenderer.MeasureText(g, name, Theme.F(9f, FontStyle.Bold), Size.Empty, TextFormatFlags.NoPadding).Width + Theme.S(20);
+                Deco.Chip(g, new Rectangle(p, p + Theme.S(108), cw, Theme.S(20)), name, tone, true);
+                Theme.Text(g, "품질 " + s.Quality + "%", Theme.F(9f), Theme.TextDim, new Rectangle(p + cw + Theme.S(10), p + Theme.S(108), Theme.S(90), Theme.S(20)));
             }
-            int valueRight = barsRight - barsW - Ui.S(22);
-            Rectangle valueRect = new Rectangle(valueRight - Ui.S(240), Ui.S(14), Ui.S(240), Ui.S(58));
-            if (lv != null)
-            {
-                Ui.Text(g, s.Rssi + " dBm", dbm, lv.Color, valueRect, TextFormatFlags.Right);
-                Ui.Text(g, lv.Name + "  ·  품질 " + s.Quality + "%", level, lv.Color, new Rectangle(valueRect.X, Ui.S(76), valueRect.Width, Ui.S(26)), TextFormatFlags.Right);
-            }
-            else Ui.Text(g, "-- dBm", dbm, Ui.Muted, valueRect, TextFormatFlags.Right);
+            else
+                Deco.Chip(g, new Rectangle(p, p + Theme.S(108), Theme.S(78), Theme.S(20)), s.HasAdapter ? "대기" : "어댑터 없음", Theme.None, true);
+            Theme.Text(g, s.Error.Length > 0 ? s.Error : advice, Theme.F(9f), s.Error.Length > 0 ? Theme.Lv2 : Theme.TextDim,
+                new Rectangle(p, r.Bottom - p - Theme.S(18), Width - p * 2, Theme.S(18)));
         }
     }
 
-    class Tile : CardControl
+    class QualityCard : Card
     {
-        readonly Font titleFont = Ui.F(9f), valueFont = Ui.F(16f, FontStyle.Bold), subFont = Ui.F(8.5f);
-        readonly string title;
-        string value = "-", sub = "";
-        Color color = Ui.Ink;
-        public Tile(string title) { this.title = title; }
-        public void Set(string v, string s, Color? c = null)
+        public readonly Ring Dial = new Ring();
+        public QualityCard()
         {
-            value = v; sub = s; color = c ?? Ui.Ink; Invalidate();
+            Pad = 12;
+            Dial.BackColor = Theme.Surface;
+            Dial.Caption = "링크 품질";
+            Controls.Add(Dial);
         }
-        protected override void PaintContent(Graphics g, Rectangle r)
+        protected override void OnResize(EventArgs e) { base.OnResize(e); Dial.SetBounds(0, Theme.S(4), Width, Height - Theme.S(6)); }
+        public void Set(Sample s, bool measuring)
         {
-            int pad = Ui.S(14), w = r.Width - pad * 2;
-            Ui.Text(g, title, titleFont, Ui.Muted, new Rectangle(pad, Ui.S(9), w, Ui.S(20)));
-            Ui.Text(g, value, valueFont, color, new Rectangle(pad, Ui.S(29), w, Ui.S(36)));
-            Ui.Text(g, sub, subFont, Ui.Muted, new Rectangle(pad, Ui.S(66), w, Ui.S(20)));
+            bool ok = s.Connected && s.Rssi < 0;
+            Dial.Center = ok ? s.Quality + "%" : "—";
+            Dial.Sub = ok ? SignalMath.LevelName(SignalMath.LevelOf(s.Rssi)) : "신호 없음";
+            Dial.Tone = ok ? Theme.Tone(s.Rssi) : Theme.None;
+            Dial.Pulsing = measuring && ok;
+            Dial.Set(ok ? s.Quality : 0);
         }
     }
 
-    class GraphCard : CardControl
+    class StreamCard : Card
     {
-        public const int Capacity = 180;
-        readonly List<double> data = new List<double>();
-        readonly Font titleFont = Ui.F(10.5f, FontStyle.Bold), axis = Ui.F(8.5f);
-        const double Ceiling = -20, Floor = -100;
+        public readonly StreamGraph Graph = new StreamGraph();
+        public readonly Segmented Range = new Segmented();
+        public string Avg = "", Note = "";
 
-        public void Add(double v)
+        public StreamCard()
         {
-            data.Add(v);
-            if (data.Count > Capacity) data.RemoveAt(0);
-            Invalidate();
+            Pad = 16;
+            Range.Items.Add("1분"); Range.Items.Add("3분"); Range.Items.Add("5분"); Range.Items.Add("10분");
+            Range.Selected = 1;
+            int[] wins = { 60, 180, 300, 600 };
+            Range.Changed += delegate { Graph.Window = wins[Math.Max(0, Math.Min(3, Range.Selected))]; Graph.Invalidate(); };
+            Range.BackColor = Theme.Surface;
+            Graph.BackColor = Theme.Surface;
+            Graph.Window = 180;
+            Controls.Add(Graph); Controls.Add(Range);
         }
-        public IEnumerable<double> Valid { get { return data.Where(d => !double.IsNaN(d)); } }
-
-        protected override void PaintContent(Graphics g, Rectangle r)
+        protected override void OnResize(EventArgs e)
         {
-            Ui.Text(g, "신호 추이 · 최근 3분", titleFont, Ui.Ink, new Rectangle(Ui.S(16), Ui.S(9), Ui.S(260), Ui.S(24)));
-            double[] v = Valid.ToArray();
-            if (v.Length > 0)
-                Ui.Text(g, string.Format("평균 {0:0} · 최저 {1:0} · 최고 {2:0} dBm", v.Average(), v.Min(), v.Max()), axis, Ui.Muted,
-                    new Rectangle(r.Right - Ui.S(336), Ui.S(9), Ui.S(320), Ui.S(24)), TextFormatFlags.Right);
-
-            Rectangle p = Rectangle.FromLTRB(r.Left + Ui.S(56), r.Top + Ui.S(40), r.Right - Ui.S(18), r.Bottom - Ui.S(28));
-            if (p.Width < 20 || p.Height < 20) return;
-            Func<double, float> y = d => (float)(p.Top + (Ceiling - Math.Max(Floor, Math.Min(Ceiling, d))) / (Ceiling - Floor) * p.Height);
-
-            // 신호 구간 배경
-            double[] edges = { -20, -50, -60, -70, -80, -100 };
-            for (int i = 0; i < 5; i++)
-            {
-                Color c = Level.Of((int)edges[i + 1]).Color;
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(20, c)))
-                    g.FillRectangle(b, p.Left, y(edges[i]), p.Width, y(edges[i + 1]) - y(edges[i]));
-            }
-            using (Pen grid = new Pen(Color.FromArgb(226, 230, 236)))
-                foreach (int d in new[] { -30, -50, -60, -70, -80, -90 })
-                {
-                    g.DrawLine(grid, p.Left, y(d), p.Right, y(d));
-                    Ui.Text(g, d.ToString(), axis, Ui.Muted, new Rectangle(r.Left + Ui.S(8), (int)y(d) - Ui.S(10), Ui.S(40), Ui.S(20)), TextFormatFlags.Right);
-                }
-            Ui.Text(g, "3분 전", axis, Ui.Muted, new Rectangle(p.Left, p.Bottom + Ui.S(5), Ui.S(80), Ui.S(20)));
-            Ui.Text(g, "지금", axis, Ui.Muted, new Rectangle(p.Right - Ui.S(80), p.Bottom + Ui.S(5), Ui.S(80), Ui.S(20)), TextFormatFlags.Right);
-
-            // 측정값 선 (연결이 끊긴 구간은 비워 둔다)
-            float step = p.Width / (float)(Capacity - 1);
-            List<PointF> run = new List<PointF>();
-            using (Pen line = new Pen(Ui.Accent, Ui.S(2)) { LineJoin = LineJoin.Round })
-            {
-                for (int i = 0; i <= data.Count; i++)
-                {
-                    bool gap = i == data.Count || double.IsNaN(data[i]);
-                    if (gap)
-                    {
-                        if (run.Count > 1) g.DrawLines(line, run.ToArray());
-                        run.Clear();
-                    }
-                    else run.Add(new PointF(p.Right - (data.Count - 1 - i) * step, y(data[i])));
-                }
-            }
-            if (data.Count > 0 && !double.IsNaN(data[data.Count - 1]))
-            {
-                float dot = Ui.S(9), cy = y(data[data.Count - 1]);
-                using (SolidBrush b = new SolidBrush(Ui.Accent)) g.FillEllipse(b, p.Right - dot / 2, cy - dot / 2, dot, dot);
-            }
+            base.OnResize(e);
+            Range.SetBounds(Width - Theme.S(16 + 196), Theme.S(8), Theme.S(196), Theme.S(26));
+            Graph.SetBounds(Theme.S(8), Theme.S(40), Width - Theme.S(16), Math.Max(Theme.S(40), Height - Theme.S(90)));
+        }
+        protected override void PaintBody(Graphics g)
+        {
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            int p = Theme.S(Pad);
+            Theme.CaptionText(g, "신호 추이", Theme.TextMute, new Rectangle(p, p - Theme.S(4), Theme.S(120), Theme.S(14)));
+            Theme.Text(g, Avg, Theme.F(9.5f), Theme.TextDim, new Rectangle(p, p + Theme.S(10), Width - Theme.S(240), Theme.S(18)));
+            Theme.Text(g, Note, Theme.F(8.5f), Theme.TextMute, new Rectangle(p, r.Bottom - Theme.S(26), Width - p * 2, Theme.S(18)));
         }
     }
 
-    class SmoothListView : ListView
+    class ChartCard : Card
     {
-        public SmoothListView() { DoubleBuffered = true; }
+        public readonly Spectrum Bars = new Spectrum();
+        public readonly Segmented Band = new Segmented();
+        public string Head = "", Foot = "";
+
+        public ChartCard()
+        {
+            Pad = 16;
+            Band.Items.Add("2.4G"); Band.Items.Add("5G"); Band.Items.Add("6G");
+            Band.BackColor = Theme.Surface; Bars.BackColor = Theme.Surface;
+            Controls.Add(Bars); Controls.Add(Band);
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Band.SetBounds(Width - Theme.S(16 + 148), Theme.S(8), Theme.S(148), Theme.S(26));
+            Bars.SetBounds(Theme.S(6), Theme.S(40), Width - Theme.S(12), Math.Max(Theme.S(40), Height - Theme.S(86)));
+        }
+        protected override void PaintBody(Graphics g)
+        {
+            int p = Theme.S(Pad);
+            Theme.CaptionText(g, "채널 점유", Theme.TextMute, new Rectangle(p, p - Theme.S(4), Theme.S(120), Theme.S(14)));
+            Theme.Text(g, Head, Theme.F(9.5f), Theme.TextDim, new Rectangle(p, p + Theme.S(10), Width - Theme.S(180), Theme.S(18)));
+            Theme.Text(g, Foot, Theme.F(8.5f), Theme.TextMute, new Rectangle(p, Height - Theme.S(28), Width - p * 2, Theme.S(18)));
+        }
     }
 
+    class ApCard : Card
+    {
+        public readonly DataTable Table = new DataTable();
+        public readonly Segmented Filter = new Segmented();
+        public readonly SearchBox Search = new SearchBox();
+        public string Count = "";
+        public event EventHandler QueryChanged;
+
+        public ApCard()
+        {
+            Pad = 16;
+            Filter.Items.Add("전체"); Filter.Items.Add("2.4G"); Filter.Items.Add("5G"); Filter.Items.Add("6G");
+            Filter.BackColor = Theme.Surface; Table.BackColor = Theme.Surface;
+            Filter.Changed += delegate { if (QueryChanged != null) QueryChanged(this, EventArgs.Empty); };
+            Search.Placeholder = "SSID · BSSID · 제조사 검색";
+            Search.TextChanged += delegate { if (QueryChanged != null) QueryChanged(this, EventArgs.Empty); };
+            Table.Columns.Add(new Column { Title = "네트워크", Width = 210 });
+            Table.Columns.Add(new Column { Title = "신호", Width = 66, Align = Theme.Align.Right });
+            Table.Columns.Add(new Column { Title = "세기", Width = 86 });
+            Table.Columns.Add(new Column { Title = "채널", Width = 52, Align = Theme.Align.Right });
+            Table.Columns.Add(new Column { Title = "대역", Width = 72 });
+            Table.Columns.Add(new Column { Title = "보안", Width = 100 });
+            Table.Columns.Add(new Column { Title = "제조사", Width = 104 });
+            Table.Columns.Add(new Column { Title = "BSSID", Width = 140 });
+            Table.SortColumn = 1; Table.SortAscending = false;
+            Table.EmptyTitle = "감지된 네트워크가 없습니다";
+            Table.EmptyHint = "‘스캔’을 누르거나 Windows 위치 서비스가 켜져 있는지 확인하세요.";
+            Controls.Add(Table); Controls.Add(Filter); Controls.Add(Search);
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Filter.SetBounds(Width - Theme.S(16 + 200), Theme.S(24), Theme.S(200), Theme.S(26));
+            Search.SetBounds(Width - Theme.S(16 + 200 + 8 + 172), Theme.S(26), Theme.S(162), Theme.S(22));
+            Table.SetBounds(Theme.S(12), Theme.S(58), Width - Theme.S(24), Math.Max(Theme.S(40), Height - Theme.S(70)));
+        }
+        protected override void PaintBody(Graphics g)
+        {
+            int p = Theme.S(Pad);
+            Theme.CaptionText(g, "주변 네트워크", Theme.TextMute, new Rectangle(p, p - Theme.S(4), Theme.S(150), Theme.S(14)));
+            Theme.Text(g, Count, Theme.F(9.5f), Theme.TextDim, new Rectangle(p, p + Theme.S(10), Theme.S(240), Theme.S(18)));
+            Rectangle box = new Rectangle(Search.Left - Theme.S(26), Search.Top - Theme.S(5), Search.Width + Theme.S(34), Search.Height + Theme.S(10));
+            Theme.Fill(g, box, Theme.S(6), Theme.SurfaceHi);
+            Theme.Stroke(g, box, Theme.S(6), Theme.Border);
+            Icons.Draw(g, Glyph.Search, new RectangleF(box.X + Theme.S(7), box.Y + (box.Height - Theme.S(12)) / 2f, Theme.S(12), Theme.S(12)), Theme.TextMute, 1.7f);
+        }
+    }
+
+    // ---- 메인 창 ----
     class MainForm : Form
     {
         readonly Sampler sampler = new Sampler();
-        readonly HeaderCard header = new HeaderCard();
-        readonly GraphCard graph = new GraphCard();
-        readonly Tile tChannel = new Tile("채널"), tLink = new Tile("링크 속도"), tPing = new Tile("공유기 응답 시간"),
-                      tLoss = new Tile("패킷 손실"), tPhy = new Tile("규격 / 보안"), tAdapter = new Tile("측정 횟수");
-        readonly SmoothListView list = new SmoothListView();
-        readonly Label nearbyTitle = new Label(), status = new Label();
-        readonly Button scanBtn = new Button(), logBtn = new Button();
-        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 1000 };
+        readonly TopBar top = new TopBar();
+        readonly FootBar status = new FootBar();
+        readonly Panel host = new Panel();
+        readonly Prefs prefs;
+
+        // 실시간
+        readonly HeroCard hero = new HeroCard();
+        readonly QualityCard quality = new QualityCard();
+        readonly Kpi kCh = new Kpi(), kLink = new Kpi(), kPing = new Kpi(), kLoss = new Kpi();
+        readonly StreamCard streamCard = new StreamCard();
+        readonly ChartCard spectrumCard = new ChartCard();
+        readonly ApCard apCard = new ApCard();
+
+        // 세션
+        readonly Kpi sMax = new Kpi(), sMin = new Kpi(), sAvg = new Kpi(), sJit = new Kpi();
+        readonly Card sDist = new Card(), sVerdict = new Card(), sFiles = new Card();
+        readonly DataTable sTable = new DataTable();
+        readonly UiButton sSave = new UiButton(), sOpen = new UiButton(), sCsv = new UiButton(), sClear = new UiButton();
+
+        // 채널
+        readonly Card congCard = new Card(), chanRec = new Card(), chanListCard = new Card();
+        readonly Ring congestion = new Ring();
+        readonly ChartCard chanChartCard = new ChartCard();
+        readonly DataTable chanTable = new DataTable();
+        readonly Segmented chanBand = new Segmented();
+        readonly UiButton chanScan = new UiButton();
+
+        // 설정
+        readonly Card setCard = new Card();
+        readonly Stepper setInterval = new Stepper(), setSmooth = new Stepper(), setThresh = new Stepper(), setWindow = new Stepper();
+        readonly Switch setMotion = new Switch(), setAutoLog = new Switch();
+        readonly UiButton setSaveBtn = new UiButton(), setReset = new UiButton();
+
+        readonly System.Windows.Forms.Timer tick = new System.Windows.Forms.Timer { Interval = 1000 };
+        readonly System.Windows.Forms.Timer fade = new System.Windows.Forms.Timer { Interval = 15 };
         readonly string snapshotPath;
         readonly DateTime started = DateTime.Now;
-        int shownVersion = -1, samples;
+
+        readonly List<double> raw = new List<double>();
+        readonly List<double[]> session = new List<double[]>();
+        List<double[]> ghost;
+        string ghostSsid = "";
+        int samples, shownVersion = -1, page;
+        float pageProgress = 1;
         string shownBssid = "";
         StreamWriter log;
         string logPath = "";
         int logRows;
+        InterferenceReport interference;
+        readonly List<BssInfo> filtered = new List<BssInfo>();
 
-        readonly string autoLogPath;
-        DateTime statusHoldUntil = DateTime.MinValue;
-
-        public MainForm(string snapshotPath, string autoLogPath)
+        public MainForm(string snapshotPath)
         {
             this.snapshotPath = snapshotPath;
-            this.autoLogPath = autoLogPath;
-            Text = "Wi-Fi 신호 체크";
-            Font = Ui.F(9.5f);
-            BackColor = Ui.Bg;
-            StartPosition = FormStartPosition.CenterScreen;
+            prefs = new Prefs(Prefs.DefaultPath("checker"));
+            Text = "무선 시그널 분석 · Wi-Fi 신호 체크";
+            BackColor = Theme.Bg;
+            ForeColor = Theme.Ink;
+            Font = Theme.Body;
             AutoScaleMode = AutoScaleMode.None;
+            StartPosition = FormStartPosition.CenterScreen;
+            DoubleBuffered = true;
+            KeyPreview = true;
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-            MinimumSize = new Size(Math.Min(Ui.S(940), wa.Width), Math.Min(Ui.S(700), wa.Height));
-            ClientSize = new Size(Math.Min(Ui.S(1080), wa.Width - 20), Math.Min(Ui.S(860), wa.Height - 50));
+            MinimumSize = new Size(Math.Min(Theme.S(1024), wa.Width), Math.Min(Theme.S(720), wa.Height));
+            ClientSize = new Size(Math.Min(Theme.S(1240), wa.Width - 40), Math.Min(Theme.S(900), wa.Height - 60));
 
-            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Ui.S(10)), BackColor = Ui.Bg };
-            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, Ui.S(128)));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, Ui.S(104)));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, Ui.S(48)));
+            top.Dock = DockStyle.Top;
+            status.Dock = DockStyle.Bottom;
+            status.Height = Theme.S(32);
+            host.Dock = DockStyle.Fill;
+            host.BackColor = Theme.Bg;
+            Controls.Add(host);
+            Controls.Add(top);
+            Controls.Add(status);
 
-            header.Dock = DockStyle.Fill;
-            root.Controls.Add(header, 0, 0);
+            BuildLive();
+            BuildSession();
+            BuildChannel();
+            BuildSettings();
 
-            TableLayoutPanel tiles = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 1, Margin = Padding.Empty, BackColor = Ui.Bg };
-            tiles.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            Tile[] all = { tChannel, tLink, tPing, tLoss, tPhy, tAdapter };
-            for (int i = 0; i < all.Length; i++)
+            top.Tabs.Changed += delegate { SetPage(top.Tabs.Selected); };
+            top.Scan.Click += delegate { sampler.RequestScan(); status.Notice("주변 네트워크를 스캔하는 중입니다…", Theme.AccentHi, 4000); };
+            top.Log.Click += delegate { ToggleLog(); };
+            top.Shot.Click += delegate { SaveSnapshot(); };
+            tick.Tick += delegate { Tick(); };
+            fade.Tick += delegate
             {
-                tiles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / all.Length));
-                all[i].Dock = DockStyle.Fill;
-                tiles.Controls.Add(all[i], i, 0);
-            }
-            root.Controls.Add(tiles, 0, 1);
+                pageProgress += 0.07f;
+                if (pageProgress >= 1) { pageProgress = 1; fade.Stop(); }
+                LayoutPage();
+            };
+            Resize += delegate { LayoutPage(); };
 
-            graph.Dock = DockStyle.Fill;
-            root.Controls.Add(graph, 0, 2);
-
-            Panel listPanel = new Panel { Dock = DockStyle.Fill, Margin = new Padding(Ui.S(4)), BackColor = Ui.Bg };
-            list.Dock = DockStyle.Fill;
-            list.View = View.Details;
-            list.FullRowSelect = true;
-            list.HeaderStyle = ColumnHeaderStyle.Nonclickable;
-            list.BorderStyle = BorderStyle.FixedSingle;
-            list.MultiSelect = false;
-            list.Columns.Add("네트워크 이름", Ui.S(270));
-            list.Columns.Add("신호", Ui.S(84), HorizontalAlignment.Right);
-            list.Columns.Add("강도", Ui.S(92));
-            list.Columns.Add("채널", Ui.S(58), HorizontalAlignment.Right);
-            list.Columns.Add("대역", Ui.S(78));
-            list.Columns.Add("보안", Ui.S(110));
-            list.Columns.Add("BSSID", Ui.S(170));
-            nearbyTitle.Dock = DockStyle.Top;
-            nearbyTitle.Height = Ui.S(30);
-            nearbyTitle.Font = Ui.F(10.5f, FontStyle.Bold);
-            nearbyTitle.ForeColor = Ui.Ink;
-            nearbyTitle.Text = "주변 Wi-Fi";
-            listPanel.Controls.Add(list);
-            listPanel.Controls.Add(nearbyTitle);
-            root.Controls.Add(listPanel, 0, 3);
-
-            Panel bottom = new Panel { Dock = DockStyle.Fill, Margin = new Padding(Ui.S(4), 0, Ui.S(4), 0), BackColor = Ui.Bg };
-            Style(scanBtn, "지금 스캔", 0); scanBtn.Click += delegate { sampler.RequestScan(); Notify("주변 네트워크를 스캔하는 중입니다..."); };
-            Style(logBtn, "CSV 기록 시작", Ui.S(118)); logBtn.Click += delegate { ToggleLog(); };
-            status.Dock = DockStyle.Fill;
-            status.TextAlign = ContentAlignment.MiddleRight;
-            status.ForeColor = Ui.Muted;
-            status.AutoEllipsis = true;
-            bottom.Controls.Add(status);
-            bottom.Controls.Add(scanBtn);
-            bottom.Controls.Add(logBtn);
-            status.Padding = new Padding(Ui.S(250), 0, 0, 0);
-            root.Controls.Add(bottom, 0, 4);
-
-            Controls.Add(root);
-            timer.Tick += delegate { Tick(); };
+            ApplySettings();
+            SetPage(prefs.GetInt("tab", 0), true);
+            LayoutPage();
         }
 
-        void Style(Button b, string text, int x)
+        // ---------- 페이지 구성 ----------
+        void AddCard(Control c, params Control[] children)
         {
-            b.Text = text;
-            b.SetBounds(x, Ui.S(6), Ui.S(110), Ui.S(36));
-            b.FlatStyle = FlatStyle.System;
+            host.Controls.Add(c);
+            foreach (Control child in children) { child.BackColor = Theme.Surface; c.Controls.Add(child); }
         }
 
+        void BuildLive()
+        {
+            kCh.Caption = "채널"; kCh.ShowSpark = false;
+            kLink.Caption = "링크 속도"; kLink.Unit = "Mbps"; kLink.ShowSpark = true;
+            kPing.Caption = "공유기 응답"; kPing.Unit = "ms"; kPing.ShowSpark = true;
+            kLoss.Caption = "패킷 손실"; kLoss.Unit = "%"; kLoss.Decimals = 1; kLoss.ShowSpark = true;
+            spectrumCard.Head = "주변 AP 밀도";
+            spectrumCard.Foot = "막대 높이는 AP 수입니다. 액센트는 권장 채널입니다.";
+            apCard.QueryChanged += delegate { RebuildTable(true); };
+            apCard.Table.SortChanged += delegate { RebuildTable(false); };
+            host.Controls.Add(hero); host.Controls.Add(quality);
+            host.Controls.Add(kCh); host.Controls.Add(kLink); host.Controls.Add(kPing); host.Controls.Add(kLoss);
+            host.Controls.Add(streamCard); host.Controls.Add(spectrumCard); host.Controls.Add(apCard);
+        }
+
+        void BuildSession()
+        {
+            sMax.Caption = "최고 신호"; sMax.Unit = "dBm"; sMax.Tone = Theme.Lv5; sMax.ShowSpark = false;
+            sMin.Caption = "최저 신호"; sMin.Unit = "dBm"; sMin.Tone = Theme.Lv1; sMin.ShowSpark = false;
+            sAvg.Caption = "평균 신호"; sAvg.Unit = "dBm"; sAvg.Tone = Theme.Accent; sAvg.ShowSpark = true;
+            sJit.Caption = "변동성"; sJit.Unit = "dB"; sJit.Decimals = 1; sJit.ShowSpark = false;
+            sSave.Label = "세션 저장"; sSave.Glyph = Glyph.Folder; sSave.Kind = Btn.Primary;
+            sOpen.Label = "세션 열기"; sOpen.Glyph = Glyph.Layers; sOpen.Kind = Btn.Subtle;
+            sCsv.Label = "요약 CSV"; sCsv.Glyph = Glyph.Export; sCsv.Kind = Btn.Subtle;
+            sClear.Label = "비우기"; sClear.Glyph = Glyph.Trash; sClear.Kind = Btn.Danger;
+            sSave.Click += delegate { SaveSession(); };
+            sOpen.Click += delegate { OpenSession(); };
+            sCsv.Click += delegate { SaveSummaryCsv(); };
+            sClear.Click += delegate { ClearSession(); };
+            sTable.Columns.Add(new Column { Title = "세션", Width = 250 });
+            sTable.Columns.Add(new Column { Title = "평균", Width = 84, Align = Theme.Align.Right, Sortable = false });
+            sTable.Columns.Add(new Column { Title = "최저", Width = 84, Align = Theme.Align.Right, Sortable = false });
+            sTable.Columns.Add(new Column { Title = "표본", Width = 90, Align = Theme.Align.Right, Sortable = false });
+            sTable.EmptyTitle = "저장된 세션이 없습니다";
+            sTable.EmptyHint = "‘세션 저장’을 누르면 지금 측정이 남고, 다음 세션과 점선으로 겹쳐 비교됩니다.";
+            sDist.Body = PaintDist;
+            sVerdict.Body = PaintVerdict;
+            sFiles.Body = PaintFiles;
+            sFiles.Resize += delegate
+            {
+                int w = sFiles.Width, h = sFiles.Height;
+                sSave.SetBounds(Theme.S(16), Theme.S(44), Theme.S(96), Theme.S(30));
+                sOpen.SetBounds(Theme.S(120), Theme.S(44), Theme.S(96), Theme.S(30));
+                sCsv.SetBounds(Theme.S(224), Theme.S(44), Theme.S(96), Theme.S(30));
+                sClear.SetBounds(w - Theme.S(16 + 86), Theme.S(44), Theme.S(86), Theme.S(30));
+                sTable.SetBounds(Theme.S(12), Theme.S(86), w - Theme.S(24), Math.Max(Theme.S(40), h - Theme.S(98)));
+            };
+            AddCard(sDist); AddCard(sVerdict); AddCard(sFiles, sSave, sOpen, sCsv, sClear, sTable);
+            host.Controls.Add(sMax); host.Controls.Add(sMin); host.Controls.Add(sAvg); host.Controls.Add(sJit);
+        }
+
+        void BuildChannel()
+        {
+            congestion.Caption = "대역 혼잡도";
+            congestion.Tone = Theme.Lv3;
+            congCard.BackColor = Theme.Bg;
+            congCard.Controls.Add(congestion);
+            congCard.Resize += delegate { congestion.SetBounds(0, Theme.S(6), congCard.Width, congCard.Height - Theme.S(10)); };
+            chanBand.Items.Add("2.4 GHz"); chanBand.Items.Add("5 GHz"); chanBand.Items.Add("6 GHz");
+            chanBand.Selected = 0;
+            chanBand.Changed += delegate { SyncBand(chanBand.Selected); };
+            spectrumCard.Band.Changed += delegate { SyncBand(spectrumCard.Band.Selected); };
+            chanChartCard.Band.Changed += delegate { SyncBand(chanChartCard.Band.Selected); };
+            chanRec.Body = PaintRecommendation;
+            chanChartCard.Head = "채널별 점유";
+            chanChartCard.Foot = "권장 채널을 액센트로 표시합니다. 2.4 GHz는 1·6·11만 권장합니다.";
+            chanListCard.Title = "채널 순위";
+            chanTable.Columns.Add(new Column { Title = "채널", Width = 64, Align = Theme.Align.Right, Sortable = false });
+            chanTable.Columns.Add(new Column { Title = "점유", Width = 96, Sortable = false });
+            chanTable.Columns.Add(new Column { Title = "AP", Width = 48, Align = Theme.Align.Right, Sortable = false });
+            chanTable.Columns.Add(new Column { Title = "최강 신호", Width = 90, Align = Theme.Align.Right, Sortable = false });
+            chanTable.Columns.Add(new Column { Title = "판정", Width = 80, Sortable = false });
+            chanTable.EmptyTitle = "채널 데이터가 없습니다";
+            chanTable.EmptyHint = "주변 네트워크를 스캔하면 채널별 점유가 계산됩니다.";
+            chanScan.Label = "다시 스캔"; chanScan.Glyph = Glyph.Scan; chanScan.Kind = Btn.Subtle;
+            chanScan.Click += delegate { sampler.RequestScan(); status.Notice("채널 분석을 위해 다시 스캔합니다…", Theme.AccentHi, 3000); };
+            chanListCard.Resize += delegate
+            {
+                int w = chanListCard.Width, h = chanListCard.Height;
+                chanBand.SetBounds(Theme.S(16), Theme.S(46), Theme.S(232), Theme.S(26));
+                chanScan.SetBounds(w - Theme.S(16 + 96), Theme.S(44), Theme.S(96), Theme.S(28));
+                chanTable.SetBounds(Theme.S(12), Theme.S(84), w - Theme.S(24), Math.Max(Theme.S(40), h - Theme.S(96)));
+            };
+            AddCard(congCard); AddCard(chanRec); AddCard(chanChartCard);
+            AddCard(chanListCard, chanBand, chanScan, chanTable);
+        }
+
+        void BuildSettings()
+        {
+            setInterval.Min = 1; setInterval.Max = 10; setInterval.Increment = 1; setInterval.Suffix = "초";
+            setSmooth.Min = 1; setSmooth.Max = 9; setSmooth.Increment = 2; setSmooth.Suffix = "회";
+            setThresh.Min = -90; setThresh.Max = -50; setThresh.Increment = 1; setThresh.Suffix = "dBm";
+            setWindow.Min = 60; setWindow.Max = 600; setWindow.Increment = 60; setWindow.Suffix = "초";
+            setSaveBtn.Label = "설정 저장"; setSaveBtn.Glyph = Glyph.Check; setSaveBtn.Kind = Btn.Primary;
+            setReset.Label = "기본값"; setReset.Glyph = Glyph.Undo; setReset.Kind = Btn.Ghost;
+            setSaveBtn.Click += delegate { SaveSettings(); };
+            setReset.Click += delegate
+            {
+                setInterval.Value = 1; setSmooth.Value = 3; setThresh.Value = -70; setWindow.Value = 180;
+                setMotion.Set(true); setAutoLog.Set(false);
+                status.Notice("기본값으로 되돌렸습니다. ‘설정 저장’을 누르면 적용됩니다.", Theme.TextDim, 4000);
+            };
+            setCard.Title = "측정 설정";
+            setCard.Sub = "여기서 바꾼 값은 ‘설정 저장’을 눌러야 다음 실행에도 유지됩니다.";
+            setCard.Body = PaintSettingRows;
+            setCard.Resize += delegate
+            {
+                int x = Theme.S(24), y = Theme.S(78);
+                int wx = Theme.S(340);
+                setInterval.SetBounds(x + wx, y, Theme.S(110), Theme.S(30));
+                setSmooth.SetBounds(x + wx, y + Theme.S(44), Theme.S(110), Theme.S(30));
+                setThresh.SetBounds(x + wx, y + Theme.S(88), Theme.S(110), Theme.S(30));
+                setWindow.SetBounds(x + wx, y + Theme.S(132), Theme.S(110), Theme.S(30));
+                setMotion.SetBounds(x + wx, y + Theme.S(176), Theme.S(44), Theme.S(30));
+                setAutoLog.SetBounds(x + wx, y + Theme.S(220), Theme.S(44), Theme.S(30));
+                setSaveBtn.SetBounds(x, y + Theme.S(268), Theme.S(118), Theme.S(34));
+                setReset.SetBounds(x + Theme.S(130), y + Theme.S(268), Theme.S(96), Theme.S(34));
+            };
+            AddCard(setCard, setInterval, setSmooth, setThresh, setWindow, setMotion, setAutoLog, setSaveBtn, setReset);
+        }
+
+        void SetPage(int i, bool instant = false)
+        {
+            page = Math.Max(0, Math.Min(3, i));
+            top.Tabs.Selected = page;
+            pageProgress = instant ? 1 : 0;
+            fade.Stop();
+            if (!instant) fade.Start();
+            LayoutPage();
+        }
+
+        // ---------- 레이아웃 ----------
+        void LayoutPage()
+        {
+            int w = host.ClientSize.Width, h = host.ClientSize.Height;
+            if (w < 60 || h < 60) return;
+            int pad = Theme.S(16), gap = Theme.S(12);
+            int inner = w - pad * 2;
+            bool live = page == 0, sess = page == 1, chan = page == 2, set = page == 3;
+
+            hero.Visible = quality.Visible = kCh.Visible = kLink.Visible = kPing.Visible = kLoss.Visible = live;
+            streamCard.Visible = spectrumCard.Visible = apCard.Visible = live;
+            sMax.Visible = sMin.Visible = sAvg.Visible = sJit.Visible = sDist.Visible = sVerdict.Visible = sFiles.Visible = sess;
+            congCard.Visible = chanRec.Visible = chanChartCard.Visible = chanListCard.Visible = chan;
+            setCard.Visible = set;
+
+            if (live)
+            {
+                int row1 = Theme.S(184);
+                int left = (int)(inner * 0.46);
+                int ring = (int)(inner * 0.2);
+                Set(hero, pad, pad, left, row1);
+                Set(quality, pad + left + gap, pad, ring, row1);
+                int kx = pad + left + gap + ring + gap;
+                int kw = w - pad - kx, kh = (row1 - gap) / 2, kw2 = (kw - gap) / 2;
+                Set(kCh, kx, pad, kw2, kh);
+                Set(kLink, kx + kw2 + gap, pad, kw - kw2 - gap, kh);
+                Set(kPing, kx, pad + kh + gap, kw2, kh);
+                Set(kLoss, kx + kw2 + gap, pad + kh + gap, kw - kw2 - gap, kh);
+
+                int y2 = pad + row1 + gap;
+                int avail = h - pad - y2 - gap;
+                int row2 = Math.Max(Theme.S(170), (int)(avail * 0.52));
+                int row3 = Math.Max(Theme.S(120), avail - row2 - gap);
+                int sw = (int)(inner * 0.62);
+                Set(streamCard, pad, y2, sw, row2);
+                Set(spectrumCard, pad + sw + gap, y2, inner - sw - gap, row2);
+                Set(apCard, pad, y2 + row2 + gap, inner, row3);
+            }
+            else if (sess)
+            {
+                int row1 = Theme.S(104);
+                int kw = (inner - gap * 3) / 4;
+                Set(sMax, pad, pad, kw, row1);
+                Set(sMin, pad + kw + gap, pad, kw, row1);
+                Set(sAvg, pad + (kw + gap) * 2, pad, kw, row1);
+                Set(sJit, pad + (kw + gap) * 3, pad, inner - (kw + gap) * 3, row1);
+                int y2 = pad + row1 + gap;
+                int row2 = Theme.S(156);
+                int bw = (inner - gap) / 2;
+                Set(sDist, pad, y2, bw, row2);
+                Set(sVerdict, pad + bw + gap, y2, inner - bw - gap, row2);
+                int y3 = y2 + row2 + gap;
+                Set(sFiles, pad, y3, inner, Math.Max(Theme.S(150), h - pad - y3));
+            }
+            else if (chan)
+            {
+                int row1 = Theme.S(140);
+                int bw = (int)(inner * 0.28);
+                Set(congCard, pad, pad, bw, row1);
+                Set(chanRec, pad + bw + gap, pad, inner - bw - gap, row1);
+                int y2 = pad + row1 + gap;
+                int row2 = Math.Max(Theme.S(140), (int)((h - pad - y2 - gap) * 0.44));
+                Set(chanChartCard, pad, y2, inner, row2);
+                Set(chanListCard, pad, y2 + row2 + gap, inner, Math.Max(Theme.S(140), h - pad - y2 - row2 - gap));
+            }
+            else if (set)
+            {
+                int cw = Math.Min(inner, Theme.S(760));
+                Set(setCard, pad, pad, cw, Math.Min(h - pad * 2, Theme.S(470)));
+            }
+        }
+
+        void Set(Control c, int x, int y, int w, int h)
+        {
+            if (pageProgress < 1)
+                y += (int)((1 - Ease.OutCubic(pageProgress)) * Theme.S(10));
+            c.SetBounds(x, y, Math.Max(1, w), Math.Max(1, h));
+        }
+
+        // ---------- 갱신 ----------
+        void Tick()
+        {
+            Sample s = sampler.Latest;
+            samples++;
+            double rawValue = s.Connected && s.Rssi < 0 ? s.Rssi : double.NaN;
+            raw.Add(rawValue);
+            if (raw.Count > 64) raw.RemoveAt(0);
+            int n = Math.Max(1, (int)setSmooth.Value);
+            double smoothValue = double.IsNaN(rawValue) ? double.NaN : SignalMath.Smooth(raw, n);
+            double t = (DateTime.Now - started).TotalSeconds;
+            session.Add(new double[] { t, rawValue });
+            if (session.Count > 7200) session.RemoveAt(0);
+            streamCard.Graph.AddSample(t, smoothValue);
+            streamCard.Avg = BuildAverageText();
+            streamCard.Graph.Threshold = (double)setThresh.Value;
+
+            hero.Set(s, Advice(s), true);
+            quality.Set(s, true);
+            UpdateKpis(s);
+            UpdateStatus(s);
+            if (s.NearbyVersion != shownVersion || s.Bssid != shownBssid)
+            {
+                shownVersion = s.NearbyVersion; shownBssid = s.Bssid;
+                RebuildTable(true);
+                UpdateChannel();
+            }
+            WriteLog(s);
+            if (samples % 3 == 0) UpdateSession();
+            if (snapshotPath != null && (DateTime.Now - started).TotalSeconds >= 14)
+            {
+                tick.Stop();
+                try
+                {
+                    using (Bitmap bmp = new Bitmap(Width, Height))
+                    {
+                        DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                        bmp.Save(snapshotPath, ImageFormat.Png);
+                    }
+                }
+                catch (Exception) { }
+                Close();
+            }
+        }
+
+        string BuildAverageText()
+        {
+            List<double> vals = new List<double>();
+            foreach (double[] row in session)
+                if (!double.IsNaN(row[1]) && row[0] > (DateTime.Now - started).TotalSeconds - streamCard.Graph.Window) vals.Add(row[1]);
+            if (vals.Count == 0) return "아직 표본이 없습니다";
+            double avg = 0, lo = double.MaxValue, hi = double.MinValue;
+            foreach (double v in vals) { avg += v; lo = Math.Min(lo, v); hi = Math.Max(hi, v); }
+            avg /= vals.Count;
+            return "평균 " + avg.ToString("0.0") + " · 최저 " + lo.ToString("0") + " · 최고 " + hi.ToString("0") + " dBm · " + vals.Count + "개 표본";
+        }
+
+        void UpdateKpis(Sample s)
+        {
+            bool ok = s.Connected;
+            kCh.Set(ok ? s.Channel : double.NaN);
+            kCh.Sub = ok ? s.Band + " · 같은 채널 " + SameChannel(s) + "대" : "연결 안 됨";
+            kCh.Tone = Theme.Ink;
+            kLink.Set(ok ? s.RxMbps : double.NaN);
+            kLink.Sub = ok ? "수신 " + s.RxMbps.ToString("0") + " / 송신 " + s.TxMbps.ToString("0") : "—";
+            kLink.Push(s.RxMbps);
+            kLink.Tone = Theme.Ink;
+            if (!ok || s.PingCount == 0 || s.AvgPing < 0)
+            {
+                kPing.Set(double.NaN); kPing.Sub = ok ? "측정 중" : "—"; kPing.Tone = Theme.TextMute;
+                kLoss.Set(double.NaN); kLoss.Sub = "—"; kLoss.Tone = Theme.TextMute;
+                return;
+            }
+            kPing.Set(s.LastPing >= 0 ? s.LastPing : s.AvgPing);
+            kPing.Sub = "평균 " + s.AvgPing.ToString("0") + " ms · " + s.PingCount + "회";
+            kPing.Tone = s.LastPing < 0 || s.AvgPing > 80 ? Theme.Lv2 : Theme.Ink;
+            kPing.Push(s.LastPing >= 0 ? s.LastPing : double.NaN);
+            kLoss.Set(s.LossPct);
+            kLoss.Sub = "최근 " + s.PingCount + "회";
+            kLoss.Tone = s.LossPct >= 5 ? Theme.Lv1 : s.LossPct > 0 ? Theme.Lv3 : Theme.Lv5;
+            kLoss.Push(s.LossPct);
+        }
+
+        static int SameChannel(Sample s)
+        {
+            int n = 0;
+            foreach (BssInfo b in s.Nearby) if (b.Channel == s.Channel && b.Band == s.Band && b.Bssid != s.Bssid) n++;
+            return n;
+        }
+
+        static string Advice(Sample s)
+        {
+            if (!s.Connected) return s.HasAdapter ? "Wi-Fi에 연결되어 있지 않습니다." : "측정을 시작하는 중입니다…";
+            if (s.PingCount >= 10 && s.LossPct >= 5 && s.LossPct < 100) return "패킷 손실이 있습니다. 간섭이나 공유기 상태를 확인하세요.";
+            if (s.Rssi >= -60) return "신호가 안정적입니다. 화상 회의·스트리밍에 충분합니다.";
+            if (s.Rssi >= -70) return "일반 사용에는 무난합니다. 지연에 민감한 작업은 AP 가까이에서 하세요.";
+            if (s.Rssi >= -80) return "연결이 불안정할 수 있습니다. AP에 더 가까이 이동해 보세요.";
+            return "연결이 끊길 수 있습니다. AP 위치를 옮기거나 중계기를 검토하세요.";
+        }
+
+        void UpdateStatus(Sample s)
+        {
+            status.Live = s.Connected;
+            status.LiveText = "측정 중";
+            status.Message = s.LastScan == DateTime.MinValue ? "첫 스캔을 기다리는 중입니다"
+                : Fmt.Ago(s.LastScan) + " · " + samples + "회 측정" + (s.NearbyError.Length > 0 ? " · " + s.NearbyError : "");
+            status.Chips.Clear();
+            if (logRows > 0) status.Chips.Add("기록 " + logRows + "행");
+            status.Chips.Add("간격 " + (int)setInterval.Value + "초");
+            status.Chips.Add("스무딩 " + (int)setSmooth.Value + "회");
+            status.Chips.Add("모션 " + (setMotion.On ? "켜짐" : "꺼짐"));
+            status.Invalidate();
+        }
+
+        // ---------- 주변 네트워크 표 ----------
+        void RebuildTable(bool resetSelection)
+        {
+            Sample s = sampler.Latest;
+            host.SuspendLayout();
+            string q = apCard.Search.Text.Trim().ToLowerInvariant();
+            int bandFilter = apCard.Filter.Selected - 1;
+            filtered.Clear();
+            foreach (BssInfo b in s.Nearby)
+            {
+                if (bandFilter >= 0 && Fmt.BandIndex(b.Band) != bandFilter) continue;
+                if (q.Length > 0)
+                {
+                    string hay = (b.Ssid + " " + b.Bssid + " " + VendorDb.Of(b.Bssid) + " " + b.Channel + " " + b.Security).ToLowerInvariant();
+                    if (hay.IndexOf(q, StringComparison.Ordinal) < 0) continue;
+                }
+                filtered.Add(b);
+            }
+            Comparison<BssInfo> cmp;
+            switch (apCard.Table.SortColumn)
+            {
+                case 0: cmp = delegate (BssInfo a, BssInfo b) { return string.Compare(a.Ssid, b.Ssid, StringComparison.CurrentCulture); }; break;
+                case 3: cmp = delegate (BssInfo a, BssInfo b) { return a.Channel.CompareTo(b.Channel); }; break;
+                case 4: cmp = delegate (BssInfo a, BssInfo b) { return string.Compare(a.Band, b.Band, StringComparison.Ordinal); }; break;
+                case 5: cmp = delegate (BssInfo a, BssInfo b) { return string.Compare(a.Security, b.Security, StringComparison.Ordinal); }; break;
+                case 6: cmp = delegate (BssInfo a, BssInfo b) { return string.Compare(VendorDb.Of(a.Bssid), VendorDb.Of(b.Bssid), StringComparison.Ordinal); }; break;
+                case 7: cmp = delegate (BssInfo a, BssInfo b) { return string.Compare(a.Bssid, b.Bssid, StringComparison.Ordinal); }; break;
+                default: cmp = delegate (BssInfo a, BssInfo b) { return a.Rssi.CompareTo(b.Rssi); }; break;
+            }
+            filtered.Sort(cmp);
+            if (!apCard.Table.SortAscending) filtered.Reverse();
+
+            DataTable t = apCard.Table;
+            object keep = t.SelectedRow != null ? t.SelectedRow.Tag : null;
+            t.Rows.Clear();
+            foreach (BssInfo b in filtered)
+            {
+                bool mine = b.Bssid == s.Bssid;
+                t.Rows.Add(new Row
+                {
+                    Cells = new string[] { b.Ssid, b.Rssi + " dBm", "", b.Channel.ToString(), b.Band, b.Security, VendorDb.Of(b.Bssid), b.Bssid },
+                    Tones = new Color[] { mine ? Theme.Ink : Theme.TextDim, Theme.Tone(b.Rssi), Theme.Empty, Theme.TextDim, Theme.TextMute, Theme.TextMute, Theme.TextMute, Theme.TextMute },
+                    Emphasis = mine,
+                    Tag = b,
+                    BarColumn = 2,
+                    Bar = (100 + b.Rssi) / 50.0,
+                    BarTone = Theme.Tone(b.Rssi)
+                });
+                if (mine && keep == null) keep = b;
+            }
+            apCard.Count = filtered.Count + "개" + (filtered.Count != s.Nearby.Count ? " · 전체 " + s.Nearby.Count + "개" : "") + " · 검색/필터 적용";
+            if (resetSelection && keep != null)
+                for (int i = 0; i < t.Rows.Count; i++) if (ReferenceEquals(t.Rows[i].Tag, keep)) { t.SelectedIndex = i; break; }
+            apCard.Invalidate();
+            host.ResumeLayout();
+        }
+
+        void UpdateChannel()
+        {
+            Sample s = sampler.Latest;
+            List<Obs> obs = new List<Obs>();
+            foreach (BssInfo b in s.Nearby)
+                obs.Add(new Obs { Ssid = b.Ssid, Bssid = b.Bssid, Band = Fmt.BandIndex(b.Band), Channel = b.Channel, Rssi = b.Rssi, Security = b.Security, Vendor = VendorDb.Of(b.Bssid) });
+            int band = chanBand.Selected;
+            spectrumCard.Band.Selected = band;
+            chanChartCard.Band.Selected = band;
+            interference = Interference.Analyze(obs, band, Fmt.BandIndex(s.Band) == band ? s.Channel : 0);
+
+            BuildSpectrum(spectrumCard.Bars, obs, band, interference, false);
+            BuildSpectrum(chanChartCard.Bars, obs, band, interference, true);
+
+            chanTable.Rows.Clear();
+            List<ChannelScore> sorted = new List<ChannelScore>(interference.Channels);
+            sorted.Sort(delegate (ChannelScore a, ChannelScore b) { return a.Load.CompareTo(b.Load); });
+            foreach (ChannelScore cs in sorted)
+            {
+                if (cs.ApCount == 0 && cs.Load <= 0.001) continue;
+                chanTable.Rows.Add(new Row
+                {
+                    Cells = new string[] { cs.Channel.ToString(), "", cs.ApCount.ToString(), cs.WorstRssi > -100 ? cs.WorstRssi + " dBm" : "—",
+                        cs.Recommended ? "추천" : cs.Load > 0.6 ? "혼잡" : "여유" },
+                    Tones = new Color[] { Theme.Ink, Theme.Empty, Theme.TextDim, Theme.TextDim, cs.Recommended ? Theme.Lv5 : cs.Load > 0.6 ? Theme.Lv1 : Theme.TextMute },
+                    Bar = cs.Load, BarColumn = 1,
+                    BarTone = cs.Load > 0.6 ? Theme.Lv1 : cs.Load > 0.3 ? Theme.Lv3 : Theme.Lv5,
+                    Emphasis = cs.Recommended
+                });
+            }
+            congestion.Tone = interference.BandCongestion > 55 ? Theme.Lv1 : interference.BandCongestion > 30 ? Theme.Lv3 : Theme.Lv5;
+            congestion.Center = interference.BandCongestion.ToString("0") + "%";
+            congestion.Sub = interference.BandCongestion > 55 ? "매우 붐빔" : interference.BandCongestion > 30 ? "보통" : "여유";
+            congestion.Set(interference.BandCongestion);
+            spectrumCard.Head = interference.Summary;
+            chanRec.Invalidate();
+            apCard.Invalidate();
+        }
+
+        // 세 곳의 대역 선택을 하나로 맞춘다
+        void SyncBand(int band)
+        {
+            band = Math.Max(0, Math.Min(2, band));
+            chanBand.Selected = band;
+            spectrumCard.Band.Selected = band;
+            chanChartCard.Band.Selected = band;
+            UpdateChannel();
+        }
+
+        void BuildSpectrum(Spectrum target, List<Obs> obs, int band, InterferenceReport rep, bool highlight)
+        {
+            int[] cand = Interference.Candidates(band);
+            List<string> labels = new List<string>();
+            List<double> vals = new List<double>();
+            List<Color> tones = new List<Color>();
+            int hi = -1;
+            foreach (int ch in cand)
+            {
+                ChannelScore cs = rep.Of(ch);
+                if (cs == null) continue;
+                int count = 0;
+                foreach (Obs o in obs) if (o.Band == band && o.Channel == ch) count++;
+                labels.Add(ch.ToString());
+                vals.Add(count);
+                tones.Add(Theme.Mix(Theme.Accent, Theme.Lv1, cs.Load * 0.85));
+                if (highlight && cs.Recommended && hi < 0) hi = labels.Count - 1;
+            }
+            target.Set(labels.ToArray(), vals.ToArray(), tones.ToArray(), hi);
+            target.HighlightText = hi >= 0 && rep.Recommended > 0 ? "추천 " + rep.Recommended : "";
+        }
+
+        void PaintRecommendation(Graphics g, Rectangle r)
+        {
+            if (interference == null) return;
+            Theme.CaptionText(g, "권장 채널", Theme.TextMute, new Rectangle(r.X, r.Y, r.Width, Theme.S(14)));
+            Color tone = Theme.Lv5;
+            if (interference.Recommended > 0)
+            {
+                string big = interference.Recommended.ToString();
+                Theme.Mono(g, big, Theme.F(30f, FontStyle.Bold), tone, new Rectangle(r.X, r.Y + Theme.S(14), Theme.S(90), Theme.S(38)), Theme.Align.Left);
+                int bw = TextRenderer.MeasureText(g, big, Theme.F(30f, FontStyle.Bold), Size.Empty, TextFormatFlags.NoPadding).Width;
+                Theme.Text(g, "번 채널", Theme.F(10.5f, FontStyle.Bold), Theme.Alpha(tone, 200), new Rectangle(r.X + Math.Min(bw, Theme.S(80)) + Theme.S(4), r.Y + Theme.S(28), Theme.S(70), Theme.S(20)));
+            }
+            else
+                Theme.Text(g, "—", Theme.F(26f, FontStyle.Bold), Theme.None, new Rectangle(r.X, r.Y + Theme.S(14), Theme.S(60), Theme.S(34)));
+            Theme.Text(g, interference.Summary, Theme.F(9f), Theme.TextDim, new Rectangle(r.X, r.Y + Theme.S(52), r.Width, Theme.S(18)));
+            Theme.Text(g, "같은 채널 " + interference.CoChannel + " · 인접 채널 " + interference.Adjacent + " · 스캔 시점 기준",
+                Theme.F(8.5f), Theme.TextMute, new Rectangle(r.X, r.Y + Theme.S(72), r.Width, Theme.S(16)));
+            Rectangle bar = new Rectangle(r.X, r.Bottom - Theme.S(12), r.Width, Theme.S(4));
+            Theme.Fill(g, bar, Theme.S(2), Theme.Alpha(Theme.TextMute, 30));
+            ChannelScore cs = interference.Of(interference.Recommended);
+            if (cs != null && cs.Load < 1)
+                Theme.Fill(g, new Rectangle(bar.X, bar.Y, Math.Max(Theme.S(6), (int)(bar.Width * (1 - cs.Load))), bar.Height), Theme.S(2), Theme.Lv5);
+        }
+
+        // ---------- 세션 ----------
+        void ClearSession()
+        {
+            session.Clear(); raw.Clear();
+            ghost = null; ghostSsid = "";
+            streamCard.Graph.Clear();
+            streamCard.Graph.Ghost = null;
+            UpdateSession();
+            status.Notice("세션 기록을 비웠습니다.", Theme.TextDim, 3000);
+        }
+
+        void UpdateSession()
+        {
+            SessionSummary sum = Interference.Summarize(Values(session), (double)setThresh.Value);
+            if (sum.HasData)
+            {
+                sMax.Set(sum.Max); sMin.Set(sum.Min); sAvg.Set(sum.Avg); sJit.Set(sum.StdDev);
+                sMax.Sub = sum.Valid + "개 표본"; sMin.Sub = "약전계 " + sum.UnderPct.ToString("0") + "%";
+                sAvg.Sub = "지금 세션"; sJit.Sub = sum.Flaky ? "흔들림 있음" : "안정적";
+                sJit.Tone = sum.StdDev > 6 ? Theme.Lv2 : Theme.Ink;
+                sAvg.Push(sum.Avg);
+            }
+            else
+            {
+                sMax.Set(double.NaN); sMin.Set(double.NaN); sAvg.Set(double.NaN); sJit.Set(double.NaN);
+                sMax.Sub = sMin.Sub = sAvg.Sub = sJit.Sub = "표본 없음";
+            }
+            sDist.Invalidate(); sVerdict.Invalidate(); sFiles.Invalidate();
+            sTable.Rows.Clear();
+            if (ghost != null)
+            {
+                SessionSummary gs = Interference.Summarize(Values(ghost), (double)setThresh.Value);
+                sTable.Rows.Add(new Row
+                {
+                    Cells = new string[] { ("비교: " + (ghostSsid.Length > 0 ? ghostSsid : "불러온 세션")), gs.Valid > 0 ? gs.Avg.ToString("0.0") + " dBm" : "—", gs.Valid > 0 ? gs.Min.ToString("0") + " dBm" : "—", gs.Valid + "개" },
+                    Tones = new Color[] { Theme.Accent, Theme.TextDim, Theme.TextDim, Theme.TextMute },
+                    Emphasis = true
+                });
+            }
+            if (session.Count > 0)
+                sTable.Rows.Add(new Row
+                {
+                    Cells = new string[] { "지금 측정", sum.Valid > 0 ? sum.Avg.ToString("0.0") + " dBm" : "—", sum.Valid > 0 ? sum.Min.ToString("0") + " dBm" : "—", sum.Valid + "개" },
+                    Tones = new Color[] { Theme.Ink, Theme.TextDim, Theme.TextDim, Theme.TextMute }
+                });
+            streamCard.Graph.Ghost = ghost;
+            streamCard.Graph.Invalidate();
+        }
+
+        static List<double> Values(List<double[]> rows)
+        {
+            List<double> v = new List<double>();
+            foreach (double[] r in rows) v.Add(r[1]);
+            return v;
+        }
+
+        void PaintDist(Graphics g, Rectangle r)
+        {
+            Theme.CaptionText(g, "등급별 체류 비율", Theme.TextMute, new Rectangle(r.X, r.Y, r.Width, Theme.S(14)));
+            SessionSummary sum = Interference.Summarize(Values(session), (double)setThresh.Value);
+            string[] names = { "매우 약함", "약함", "보통", "좋음", "매우 좋음" };
+            Color[] tones = { Theme.Lv1, Theme.Lv2, Theme.Lv3, Theme.Lv4, Theme.Lv5 };
+            int barH = Theme.S(12), gap = Theme.S(12), labelW = Theme.S(68), pctW = Theme.S(52);
+            int y = r.Y + Theme.S(26);
+            for (int i = 0; i < 5; i++)
+            {
+                double pct = sum.Share[i];
+                Theme.Text(g, names[i], Theme.F(9f), pct > 0.5 ? Theme.TextDim : Theme.TextMute, new Rectangle(r.X, y, labelW, barH + Theme.S(4)));
+                Rectangle track = new Rectangle(r.X + labelW + Theme.S(6), y + Theme.S(4), r.Width - labelW - pctW - Theme.S(12), barH - Theme.S(4));
+                Theme.Fill(g, track, track.Height / 2, Theme.Alpha(Theme.TextMute, 30));
+                int fw = (int)Math.Round(track.Width * pct / 100.0);
+                if (fw > 2) Theme.Fill(g, new Rectangle(track.X, track.Y, fw, track.Height), track.Height / 2, tones[i]);
+                Theme.Text(g, pct.ToString("0.0") + "%", Theme.F(9f), pct > 0.5 ? Theme.Ink : Theme.TextMute, new Rectangle(r.Right - pctW, y, pctW, barH + Theme.S(4)), Theme.Align.Right);
+                y += barH + gap;
+            }
+        }
+
+        void PaintVerdict(Graphics g, Rectangle r)
+        {
+            Theme.CaptionText(g, "해석", Theme.TextMute, new Rectangle(r.X, r.Y, r.Width, Theme.S(14)));
+            SessionSummary sum = Interference.Summarize(Values(session), (double)setThresh.Value);
+            Theme.Wrap(g, sum.HasData ? sum.Verdict : "측정이 쌓이면 이 자리에 판정이 나옵니다.", Theme.F(11f), Theme.Ink, new Rectangle(r.X, r.Y + Theme.S(22), r.Width, Theme.S(46)));
+            Theme.Text(g, "약전계 기준 " + (int)setThresh.Value + " dBm · 표본 " + sum.Valid + "개",
+                Theme.F(8.5f), Theme.TextMute, new Rectangle(r.X, r.Y + Theme.S(74), r.Width, Theme.S(18)));
+            Theme.Text(g, "세션을 저장하면 다음 측정과 점선으로 겹쳐 비교합니다.",
+                Theme.F(8.5f), Theme.TextMute, new Rectangle(r.X, r.Bottom - Theme.S(18), r.Width, Theme.S(18)));
+        }
+
+        void PaintFiles(Graphics g, Rectangle r)
+        {
+            Theme.CaptionText(g, "세션 기록", Theme.TextMute, new Rectangle(r.X, r.Y, Theme.S(160), Theme.S(14)));
+            Theme.Text(g, ghost != null ? "'" + (ghostSsid.Length > 0 ? ghostSsid : "이전 세션") + "'을 겹쳐 보는 중" : "저장하거나 불러온 세션은 신호 추이에 점선으로 겹칩니다",
+                Theme.F(8.5f), Theme.TextMute, new Rectangle(r.X + Theme.S(150), r.Y, r.Width - Theme.S(160), Theme.S(14)));
+        }
+
+        void SaveSession()
+        {
+            if (session.Count == 0) { status.Notice("저장할 측정값이 없습니다.", Theme.Lv2, 3000); return; }
+            using (SaveFileDialog d = new SaveFileDialog { Title = "세션 저장", Filter = "세션 기록 (*.csv)|*.csv", FileName = "session_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    SessionFile.Save(d.FileName, sampler.Latest.Ssid, (int)setInterval.Value, session);
+                    SessionSummary sum = Interference.Summarize(Values(session), (double)setThresh.Value);
+                    ghostSsid = sampler.Latest.Ssid;
+                    ghost = new List<double[]>();
+                    foreach (double[] row in session) ghost.Add(new double[] { row[0], row[1] });
+                    UpdateSession();
+                    status.Notice("세션을 저장했습니다 · 평균 " + sum.Avg.ToString("0.0") + " dBm · " + Path.GetFileName(d.FileName), Theme.Lv5, 6000);
+                }
+                catch (Exception ex) { ShowError("세션을 저장할 수 없습니다.", ex); }
+            }
+        }
+
+        void OpenSession()
+        {
+            using (OpenFileDialog d = new OpenFileDialog { Title = "세션 열기", Filter = "세션 기록 (*.csv)|*.csv|모든 파일 (*.*)|*.*" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    string ssid;
+                    List<double[]> rows = SessionFile.Load(d.FileName, out ssid);
+                    if (rows.Count == 0) { status.Notice("이 파일에서 측정값을 찾지 못했습니다.", Theme.Lv2, 4000); return; }
+                    ghost = rows; ghostSsid = ssid;
+                    UpdateSession();
+                    status.Notice("불러왔습니다 · " + rows.Count + "개 표본을 점선으로 겹쳐 표시합니다.", Theme.AccentHi, 6000);
+                }
+                catch (Exception ex) { ShowError("세션을 열 수 없습니다.", ex); }
+            }
+        }
+
+        void SaveSummaryCsv()
+        {
+            using (SaveFileDialog d = new SaveFileDialog { Title = "요약 CSV 저장", Filter = "CSV (*.csv)|*.csv", FileName = "session_summary_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    SessionSummary sum = Interference.Summarize(Values(session), (double)setThresh.Value);
+                    SessionSummary prev = ghost != null ? Interference.Summarize(Values(ghost), (double)setThresh.Value) : null;
+                    using (StreamWriter w = new StreamWriter(d.FileName, false, new UTF8Encoding(true)))
+                    {
+                        w.WriteLine("지표,값,단위");
+                        w.WriteLine(Csv.Line("SSID", sampler.Latest.Ssid, ""));
+                        w.WriteLine(Csv.Line("측정 표본", sum.Valid, "개"));
+                        w.WriteLine(Csv.Line("평균", sum.Avg.ToString("0.0"), "dBm"));
+                        w.WriteLine(Csv.Line("최저", sum.Min.ToString("0"), "dBm"));
+                        w.WriteLine(Csv.Line("최고", sum.Max.ToString("0"), "dBm"));
+                        w.WriteLine(Csv.Line("표준편차", sum.StdDev.ToString("0.0"), "dB"));
+                        w.WriteLine(Csv.Line("약전계 비율", sum.UnderPct.ToString("0.0"), "%"));
+                        if (prev != null && prev.HasData)
+                        {
+                            w.WriteLine(Csv.Line("비교 세션 평균", prev.Avg.ToString("0.0"), "dBm"));
+                            w.WriteLine(Csv.Line("평균 차이", (sum.Avg - prev.Avg).ToString("+0.0;-0.0;0"), "dB"));
+                        }
+                        w.WriteLine(Csv.Line("약전계 기준", (int)setThresh.Value, "dBm"));
+                    }
+                    status.Notice("요약 CSV를 저장했습니다: " + Path.GetFileName(d.FileName), Theme.Lv5, 5000);
+                }
+                catch (Exception ex) { ShowError("CSV를 저장할 수 없습니다.", ex); }
+            }
+        }
+
+        // ---------- 설정 ----------
+        static readonly string[] setLabels = { "측정 주기", "신호 스무딩", "약전계 기준", "그래프 창 길이", "애니메이션 (모션)", "시작할 때 자동 기록" };
+        static readonly string[] setHints = { "자주 읽을수록 촘촘하지만 CPU를 더 씁니다", "최근 N회 평균으로 흔들림을 줄입니다", "이 값보다 약하면 약전계로 표시합니다", "그래프에 표시할 최근 구간", "끄면 값이 즉시 바뀝니다 (원격·저사양에 유리)", "실행하자마자 CSV 기록을 시작합니다" };
+
+        void PaintSettingRows(Graphics g, Rectangle content)
+        {
+            int x = Theme.S(24), y = Theme.S(78), w = Theme.S(320);
+            for (int i = 0; i < setLabels.Length; i++)
+            {
+                Theme.Text(g, setLabels[i], Theme.LabelBold, Theme.Ink, new Rectangle(x, y + Theme.S(2), w, Theme.S(18)));
+                Theme.Text(g, setHints[i], Theme.F(8.5f), Theme.TextMute, new Rectangle(x, y + Theme.S(19), w, Theme.S(16)));
+                if (i < setLabels.Length - 1) Deco.Divider(g, x, y + Theme.S(38), Theme.S(680));
+                y += Theme.S(44);
+            }
+        }
+
+        void ApplySettings()
+        {
+            tick.Interval = Math.Max(500, prefs.GetInt("interval", 1) * 1000);
+            setInterval.Value = prefs.GetInt("interval", 1);
+            setSmooth.Value = prefs.GetInt("smooth", 3);
+            setThresh.Value = (decimal)prefs.GetDouble("threshold", -70);
+            setWindow.Value = prefs.GetInt("window", 180);
+            setMotion.Set(prefs.GetBool("motion", true));
+            setAutoLog.Set(prefs.GetBool("autolog", false));
+            Motion.Enabled = setMotion.On;
+            streamCard.Graph.Threshold = (double)setThresh.Value;
+            streamCard.Graph.Window = (int)setWindow.Value;
+            apCard.Filter.Selected = Math.Max(0, Math.Min(3, prefs.GetInt("band", 0)));
+            chanBand.Selected = Math.Max(0, Math.Min(2, prefs.GetInt("chanband", 0)));
+        }
+
+        void SaveSettings()
+        {
+            prefs.SetInt("interval", (int)setInterval.Value);
+            prefs.SetInt("smooth", (int)setSmooth.Value);
+            prefs.SetDouble("threshold", (double)setThresh.Value);
+            prefs.SetInt("window", (int)setWindow.Value);
+            prefs.SetBool("motion", setMotion.On);
+            prefs.SetBool("autolog", setAutoLog.On);
+            prefs.Set("lastSsid", sampler.Latest.Ssid);
+            prefs.SetInt("tab", page);
+            prefs.SetInt("band", apCard.Filter.Selected);
+            prefs.SetInt("chanband", chanBand.Selected);
+            prefs.Save();
+            tick.Interval = Math.Max(500, (int)setInterval.Value * 1000);
+            Motion.Enabled = setMotion.On;
+            Motion.InvalidateAll();
+            streamCard.Graph.Threshold = (double)setThresh.Value;
+            streamCard.Graph.Window = (int)setWindow.Value;
+            UpdateSession();
+            UpdateChannel();
+            status.Notice("설정을 저장했습니다: " + prefs.FilePath, Theme.Lv5, 4000);
+        }
+
+        // ---------- 기록 ----------
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            if (autoLogPath != null) StartLog(autoLogPath);
             sampler.Start();
-            timer.Start();
+            tick.Start();
+            if (setAutoLog.On && snapshotPath == null)
+            {
+                try
+                {
+                    string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "WifiSurveyTools");
+                    Directory.CreateDirectory(dir);
+                    StartLog(Path.Combine(dir, "wifi_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv"));
+                }
+                catch (Exception) { }
+            }
+            status.Message = "1초마다 측정합니다. ‘스캔’으로 주변 AP를 새로 읽습니다.";
+            UpdateSession();
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            timer.Stop();
+            tick.Stop();
             sampler.Stop();
             CloseLog();
             base.OnFormClosed(e);
         }
 
-        void Tick()
+        protected override void OnKeyDown(KeyEventArgs e)
         {
-            Sample s = sampler.Latest;
-            samples++;
-            graph.Add(s.Connected ? s.Rssi : double.NaN);
-            header.Set(s, Advice(s));
-            UpdateTiles(s);
-            UpdateList(s);
-            WriteLog(s);
-            if (DateTime.Now >= statusHoldUntil)
-            {
-                if (logRows > 0) status.Text = "기록 중: " + Path.GetFileName(logPath) + " (" + logRows + "행)";
-                else if (s.LastScan != DateTime.MinValue) status.Text = "마지막 스캔 " + s.LastScan.ToString("HH:mm:ss") + " · 1초마다 측정";
-            }
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.F5) sampler.RequestScan();
+            else if (e.KeyCode == Keys.D1) { SetPage(0); }
+            else if (e.KeyCode == Keys.D2) { SetPage(1); }
+            else if (e.KeyCode == Keys.D3) { SetPage(2); }
+            else if (e.KeyCode == Keys.D4) { SetPage(3); }
+            else if (e.Control && e.KeyCode == Keys.L) ToggleLog();
+            else if (e.Control && e.KeyCode == Keys.S) SaveSession();
+            else if (e.Control && e.KeyCode == Keys.E) SaveSnapshot();
+        }
 
-            if (snapshotPath != null && (DateTime.Now - started).TotalSeconds >= 12)
+        void SaveSnapshot()
+        {
+            using (SaveFileDialog d = new SaveFileDialog { Title = "화면 PNG 저장", Filter = "PNG (*.png)|*.png", FileName = "wifi_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png" })
             {
-                timer.Stop();
-                using (Bitmap bmp = new Bitmap(Width, Height))
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
                 {
-                    DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
-                    bmp.Save(snapshotPath, ImageFormat.Png);
+                    using (Bitmap bmp = new Bitmap(Width, Height))
+                    {
+                        DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                        bmp.Save(d.FileName, ImageFormat.Png);
+                    }
+                    status.Notice("화면을 저장했습니다: " + Path.GetFileName(d.FileName), Theme.Lv5, 4000);
                 }
-                Close();
+                catch (Exception ex) { ShowError("화면을 저장할 수 없습니다.", ex); }
             }
-        }
-
-        void Notify(string message)
-        {
-            status.Text = message;
-            statusHoldUntil = DateTime.Now.AddSeconds(6);
-        }
-
-        static string Advice(Sample s)
-        {
-            if (!s.Connected) return s.HasAdapter ? "Wi-Fi에 연결되어 있지 않습니다." : "측정을 시작하는 중입니다...";
-            if (s.PingCount >= 10 && s.LossPct >= 5 && s.LossPct < 100) return "패킷 손실이 있습니다. 간섭이나 공유기 상태를 확인해 보세요.";
-            if (s.Rssi >= -60) return "신호가 안정적입니다. 영상 통화와 스트리밍에 충분합니다.";
-            if (s.Rssi >= -70) return "일반 사용에는 무난합니다. 화상 회의나 게임은 공유기 가까이에서 쓰세요.";
-            if (s.Rssi >= -80) return "연결이 불안정할 수 있습니다. 공유기에 더 가까이 가 보세요.";
-            return "연결이 끊길 수 있습니다. 공유기 위치를 옮기거나 중계기를 고려해 보세요.";
-        }
-
-        void UpdateTiles(Sample s)
-        {
-            if (s.Connected)
-            {
-                int same = s.Nearby.Count(b => b.Channel == s.Channel && b.Band == s.Band && b.Bssid != s.Bssid);
-                tChannel.Set(s.Channel > 0 ? s.Channel.ToString() : "-", s.Band + " · 같은 채널 AP " + same + "개");
-                tLink.Set(string.Format("{0:0} Mbps", s.RxMbps), string.Format("수신 {0:0} / 송신 {1:0}", s.RxMbps, s.TxMbps));
-                string[] phy = s.Phy.Split('|');
-                tPhy.Set(phy[0], (phy.Length > 1 && phy[1].Length > 0 ? phy[1] + " · " : "") + s.Auth);
-            }
-            else
-            {
-                tChannel.Set("-", ""); tLink.Set("-", ""); tPhy.Set("-", "");
-            }
-
-            if (!s.Connected || s.Gateway.Length == 0 || s.PingCount == 0)
-            {
-                tPing.Set("-", s.Connected ? "공유기 확인 중" : "");
-                tLoss.Set("-", "");
-            }
-            else if (s.AvgPing < 0)
-            {
-                // 공유기가 핑에 응답하지 않도록 설정된 경우 손실로 단정하지 않는다
-                tPing.Set("응답 없음", "공유기가 핑을 막았을 수 있음");
-                tLoss.Set("-", "측정 불가");
-            }
-            else
-            {
-                tPing.Set(s.LastPing >= 0 ? s.LastPing + " ms" : "시간 초과", string.Format("평균 {0:0} ms", s.AvgPing),
-                    s.LastPing < 0 ? Level.Of(-90).Color : (Color?)null);
-                tLoss.Set(string.Format("{0:0.#}%", s.LossPct), "최근 " + s.PingCount + "회 기준",
-                    s.LossPct >= 5 ? Level.Of(-90).Color : s.LossPct > 0 ? Level.Of(-65).Color : (Color?)null);
-            }
-            TimeSpan up = DateTime.Now - started;
-            tAdapter.Set(samples + "회", string.Format("경과 {0:00}:{1:00}:{2:00}", (int)up.TotalHours, up.Minutes, up.Seconds));
-        }
-
-        void UpdateList(Sample s)
-        {
-            if (s.NearbyVersion == shownVersion && s.Bssid == shownBssid)
-            {
-                if (s.NearbyError.Length > 0) nearbyTitle.Text = s.NearbyError;
-                return;
-            }
-            shownVersion = s.NearbyVersion; shownBssid = s.Bssid;
-            nearbyTitle.Text = s.NearbyError.Length > 0 ? s.NearbyError : "주변 Wi-Fi · 액세스 포인트 " + s.Nearby.Count + "개";
-            int top = list.TopItem != null ? list.TopItem.Index : 0;
-            list.BeginUpdate();
-            list.Items.Clear();
-            foreach (BssInfo b in s.Nearby)
-            {
-                Level lv = Level.Of(b.Rssi);
-                bool mine = b.Bssid == s.Bssid;
-                ListViewItem it = new ListViewItem(mine ? "● " + b.Ssid : b.Ssid) { UseItemStyleForSubItems = false };
-                ListViewItem.ListViewSubItem sig = it.SubItems.Add(b.Rssi + " dBm");
-                ListViewItem.ListViewSubItem bar = it.SubItems.Add(lv.Name);
-                sig.ForeColor = lv.Color; bar.ForeColor = lv.Color;
-                it.SubItems.Add(b.Channel.ToString());
-                it.SubItems.Add(b.Band);
-                it.SubItems.Add(b.Security);
-                it.SubItems.Add(b.Bssid);
-                if (mine)
-                {
-                    it.Font = Ui.F(9.5f, FontStyle.Bold);
-                    foreach (ListViewItem.ListViewSubItem si in it.SubItems) si.BackColor = Color.FromArgb(232, 242, 252);
-                }
-                list.Items.Add(it);
-            }
-            list.EndUpdate();
-            if (list.Items.Count > 0) list.TopItem = list.Items[Math.Min(top, list.Items.Count - 1)];
         }
 
         void ToggleLog()
@@ -853,16 +1560,13 @@ namespace WifiSignalChecker
             if (log != null)
             {
                 string saved = logPath;
+                int rows = logRows;
                 CloseLog();
-                logBtn.Text = "CSV 기록 시작";
-                Notify("저장됨: " + saved);
+                status.Notice("기록을 마쳤습니다: " + Path.GetFileName(saved) + " · " + rows + "행", Theme.Lv5, 6000);
                 return;
             }
-            using (SaveFileDialog d = new SaveFileDialog())
+            using (SaveFileDialog d = new SaveFileDialog { Title = "신호 기록을 저장할 위치", Filter = "CSV 파일 (*.csv)|*.csv", FileName = "wifi_log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv" })
             {
-                d.Title = "신호 기록을 저장할 위치";
-                d.Filter = "CSV 파일 (*.csv)|*.csv";
-                d.FileName = "wifi_log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv";
                 if (d.ShowDialog(this) == DialogResult.OK) StartLog(d.FileName);
             }
         }
@@ -871,16 +1575,17 @@ namespace WifiSignalChecker
         {
             try
             {
-                // Excel에서 한글이 깨지지 않도록 BOM을 포함한다
                 log = new StreamWriter(path, false, new UTF8Encoding(true)) { AutoFlush = true };
                 log.WriteLine("시각,SSID,BSSID,신호(dBm),품질(%),채널,대역,수신(Mbps),송신(Mbps),응답시간(ms)");
                 logPath = path; logRows = 0;
-                logBtn.Text = "CSV 기록 중지";
+                top.Log.Label = "중지"; top.Log.Glyph = Glyph.Stop; top.Log.Active = true;
+                top.Log.Invalidate();
+                status.Notice("기록을 시작했습니다: " + Path.GetFileName(path), Theme.Lv5, 5000);
             }
             catch (Exception ex)
             {
                 log = null;
-                MessageBox.Show(this, "파일을 만들 수 없습니다.\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowError("파일을 만들 수 없습니다.", ex);
             }
         }
 
@@ -891,15 +1596,14 @@ namespace WifiSignalChecker
             {
                 string time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 log.WriteLine(s.Connected
-                    ? string.Join(",", time, Csv(s.Ssid), s.Bssid, s.Rssi, s.Quality, s.Channel, s.Band, s.RxMbps.ToString("0"), s.TxMbps.ToString("0"), s.LastPing >= 0 ? s.LastPing.ToString() : "")
-                    : time + ",(연결 안 됨),,,,,,,,");
+                    ? Csv.Line(time, s.Ssid, s.Bssid, s.Rssi, s.Quality, s.Channel, s.Band, s.RxMbps.ToString("0"), s.TxMbps.ToString("0"), s.LastPing >= 0 ? s.LastPing.ToString() : "")
+                    : Csv.Line(time, "(연결 안 됨)"));
                 logRows++;
             }
             catch (Exception ex)
             {
                 CloseLog();
-                logBtn.Text = "CSV 기록 시작";
-                Notify("기록 중단: " + ex.Message);
+                ShowError("기록이 중단되었습니다.", ex);
             }
         }
 
@@ -907,13 +1611,13 @@ namespace WifiSignalChecker
         {
             if (log != null) { try { log.Dispose(); } catch (IOException) { } }
             log = null; logRows = 0;
+            top.Log.Label = "기록"; top.Log.Glyph = Glyph.Record; top.Log.Active = false;
+            top.Log.Invalidate();
         }
 
-        static string Csv(string v)
+        void ShowError(string message, Exception ex)
         {
-            // SSID가 수식으로 해석되지 않도록 막는다
-            if (v.Length > 0 && "=+-@".IndexOf(v[0]) >= 0) v = "'" + v;
-            return "\"" + v.Replace("\"", "\"\"") + "\"";
+            status.Notice(message + " " + ex.Message, Theme.Lv1, 8000);
         }
     }
 
@@ -925,11 +1629,9 @@ namespace WifiSignalChecker
             Native.SetProcessDPIAware();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Ui.K = g.DpiX / 96f;
-            // 점검용 옵션: --snapshot 화면.png [기록.csv] (12초 측정 후 화면을 저장하고 종료)
+            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Theme.K = g.DpiX / 96f;
             string snapshot = args.Length >= 2 && args[0] == "--snapshot" ? args[1] : null;
-            string autoLog = snapshot != null && args.Length >= 3 ? args[2] : null;
-            Application.Run(new MainForm(snapshot, autoLog));
+            Application.Run(new MainForm(snapshot));
         }
     }
 }

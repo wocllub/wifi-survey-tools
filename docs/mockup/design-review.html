@@ -1,0 +1,1132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무선시그널분석기 · UI 고도화 전/후</title>
+<style>
+  :root{
+    /* ---- 개선 후 토큰 (src/Design/Theme.cs 와 동일) ---- */
+    --bg:#0b0e13; --surface:#12161d; --surface-hi:#171d26; --surface-top:#1d242f;
+    --border:#232a35; --border-strong:#2e3744;
+    --ink:#e9eef6; --dim:#98a4b5; --mute:#66717f;
+    --accent:#4c8dff; --accent-hi:#6fa6ff; --accent-lo:#3670d8; --accent-soft:#1e3254;
+    --lv5:#11c9a0; --lv4:#5fd16a; --lv3:#f2c63d; --lv2:#ff9a3d; --lv1:#ff5d6c; --none:#485260;
+    /* ---- 개선 전 ---- */
+    --old-bg:#f3f5f8; --old-card:#ffffff; --old-border:#dee2e8; --old-ink:#1c2129; --old-muted:#626b78; --old-accent:#0067c0;
+    --u:4px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#07090c;color:var(--ink);font:14px/1.6 "Segoe UI","Malgun Gothic","Noto Sans KR",system-ui,sans-serif}
+  a{color:var(--accent-hi)}
+  header.top{position:sticky;top:0;z-index:40;background:rgba(7,9,12,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  header.top h1{font-size:15px;margin:0;letter-spacing:.01em;font-weight:600}
+  header.top .sub{color:var(--mute);font-size:12px}
+  .seg{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px}
+  .seg button{all:unset;cursor:pointer;padding:6px 13px;border-radius:6px;font-size:12.5px;color:var(--mute);font-weight:600}
+  .seg button[aria-pressed="true"]{background:var(--surface-top);color:var(--ink);box-shadow:0 1px 0 rgba(255,255,255,.04)}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .spacer{flex:1}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dim);cursor:pointer}
+  .sw{width:38px;height:20px;border-radius:10px;background:var(--surface-top);border:1px solid var(--border-strong);position:relative;transition:background .2s}
+  .sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--mute);transition:left .2s,background .2s}
+  .toggle[aria-pressed="true"] .sw{background:var(--accent)}
+  .toggle[aria-pressed="true"] .sw i{left:20px;background:#fff}
+  main{padding:24px 20px 60px;max-width:1500px;margin:0 auto}
+  .caption{display:flex;align-items:baseline;gap:12px;margin:0 0 10px}
+  .caption h2{font-size:14px;margin:0;font-weight:600}
+  .caption .hint{font-size:12px;color:var(--mute)}
+  .stage{position:relative}
+  .win{zoom:var(--z,1);transform-origin:top left;display:inline-block;width:1280px}
+  .frame{border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.45);display:inline-block;vertical-align:top;max-width:100%}
+  .frame.old{box-shadow:0 18px 40px rgba(0,0,0,.3)}
+  .row{display:flex;gap:18px;align-items:flex-start}
+  .col{flex:1;min-width:0}
+  .notes{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+  .note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--dim)}
+  .note b{color:var(--ink);display:block;margin-bottom:4px;font-size:12px}
+  .note code{font:11.5px/1.5 ui-monospace,Consolas,monospace;color:var(--accent-hi)}
+  [data-mode="before"] .cap-after,[data-mode="after"] .cap-before{display:none}
+
+  /* ================= 공통 창 ================= */
+  .appw{width:1280px;height:860px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+
+  /* ================= 개선 전: 신호 체크 ================= */
+  .oldapp{background:var(--old-bg);color:var(--old-ink);padding:10px;font-family:"Malgun Gothic",sans-serif;font-size:9.5pt;gap:0}
+  .oldcard{background:var(--old-card);border:1px solid var(--old-border);border-radius:12px;margin:4px;position:relative}
+  .oldhead{height:120px;display:flex;align-items:center;justify-content:space-between;padding:0 20px}
+  .oldhead .cap{font-size:9.5pt;color:var(--old-muted)}
+  .oldhead .ssid{font-size:21pt;font-weight:700;line-height:1.25}
+  .oldhead .adv{font-size:9.5pt;color:var(--old-muted)}
+  .oldhead .right{display:flex;align-items:flex-end;gap:22px}
+  .oldhead .dbm{font-size:30pt;font-weight:700;color:#2e7d32;line-height:1}
+  .oldhead .lvl{font-size:10.5pt;font-weight:700;color:#2e7d32;text-align:right}
+  .oldbars{display:flex;align-items:flex-end;gap:6px;height:70px;padding-bottom:14px}
+  .oldbars i{display:block;width:13px;background:#e2e6ec;border-radius:0}
+  .oldbars i.on{background:#2e7d32}
+  .oldtiles{display:grid;grid-template-columns:repeat(6,1fr);height:96px}
+  .oldtile{padding:9px 14px}
+  .oldtile .t{font-size:9pt;color:var(--old-muted)}
+  .oldtile .v{font-size:16pt;font-weight:700;margin-top:2px}
+  .oldtile .s{font-size:8.5pt;color:var(--old-muted);margin-top:2px}
+  .oldgraph{height:312px;padding:9px 16px}
+  .oldgraph .h{display:flex;justify-content:space-between;font-size:10.5pt;font-weight:700;color:var(--old-ink)}
+  .oldgraph .h span{font-size:8.5pt;font-weight:400;color:var(--old-muted)}
+  .oldlist{height:266px;padding:0 4px}
+  .oldlist .ttl{height:30px;font-size:10.5pt;font-weight:700;padding-left:6px;line-height:30px}
+  table.lv{width:100%;border-collapse:collapse;border:1px solid #d0d4da;font-size:9pt;background:#fff}
+  table.lv th{background:#f0f2f5;border-right:1px solid #dcdcdc;border-bottom:1px solid #d0d4da;padding:3px 6px;text-align:left;font-weight:400;color:#333}
+  table.lv th.r{text-align:right}
+  table.lv td{padding:2px 6px;border-bottom:1px solid #f0f0f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+  table.lv tr.mine td{background:#e8f2fc;font-weight:700}
+  .oldbottom{height:48px;display:flex;align-items:center;gap:6px;padding:0 14px;position:relative}
+  .oldbtn{width:110px;height:36px;border:1px solid #adb2b9;border-radius:3px;background:linear-gradient(#fdfdfd,#e9ecf0);font:9.5pt "Malgun Gothic";color:#1c2129;display:flex;align-items:center;justify-content:center}
+  .oldstatus{position:absolute;right:14px;font-size:9.5pt;color:var(--old-muted)}
+
+  /* ================= 개선 전: 음영 분석기 ================= */
+  .oldplanner{background:var(--old-bg);padding:0;font-family:"Malgun Gothic",sans-serif;font-size:9.5pt;color:var(--old-ink)}
+  .oldmenu{height:26px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:18px;padding:0 12px;font-size:9pt;color:#333}
+  .oldbody{display:flex;height:calc(860px - 26px - 24px)}
+  .oldside{width:256px;background:var(--old-bg);padding:10px;border-right:0;overflow:hidden}
+  .oldside h4{font-size:10pt;margin:8px 0 6px}
+  .oldradio{height:32px;margin-bottom:5px;border:1px solid #adb2b9;border-radius:2px;background:linear-gradient(#fdfdfd,#e9ecf0);display:flex;align-items:center;justify-content:center;font-size:9.5pt;color:#1c2129}
+  .oldradio.on{background:linear-gradient(#dfe9f5,#cbdcee);border-color:#7ea6c8}
+  .oldside p{font-size:9pt;color:var(--old-muted);margin:2px 0 8px;line-height:1.5}
+  .oldinput{height:24px;border:1px solid #a9adb4;border-radius:2px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 6px;font-size:9pt;margin-bottom:6px}
+  .oldinput i{font-style:normal;color:#666}
+  .oldlistbox{height:112px;border:1px solid #a9adb4;background:#fff;font-size:9pt;padding:2px 0;overflow:hidden}
+  .oldlistbox div{padding:2px 5px}
+  .oldlistbox div.sel{background:#3399ff;color:#fff}
+  .oldcanvas{flex:1;background:#e2e6ec;position:relative;overflow:hidden}
+  .oldright{width:284px;background:var(--old-bg);padding:10px}
+  .oldstat{font-size:20pt;font-weight:700;color:#0c764e;margin:2px 0 2px}
+  .oldstat2{font-size:9pt;color:var(--old-muted);line-height:1.55;white-space:pre-line}
+  .oldfield{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:9pt}
+  .oldfield label{width:112px;color:#333}
+  .oldstatusbar{height:24px;background:#f0f0f0;border-top:1px solid #d8d8d8;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:9pt;color:#444}
+  .legend-old{position:absolute;left:12px;bottom:12px;width:300px;height:58px;background:rgba(255,255,255,.93);border:1px solid #cdd2da;font-size:8pt;color:#1c2129;padding:6px 8px}
+  .legend-old .bar{height:14px;margin-left:80px;margin-right:14px;background:linear-gradient(90deg,#c42830,#f5c428,#84c03a,#0c8054)}
+
+  /* ================= 개선 후: 공통 ================= */
+  .newapp{background:var(--bg);color:var(--ink);font-family:"Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
+  .mono{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .cap2{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);font-weight:700}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:52%;background:linear-gradient(180deg,rgba(255,255,255,.045),transparent);pointer-events:none}
+  .chip{display:inline-flex;align-items:center;height:20px;padding:0 9px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid}
+  .topbar{height:64px;display:flex;align-items:center;gap:12px;padding:0 16px 0 20px;border-bottom:1px solid var(--border);flex:none}
+  .brand{width:32px;height:32px;border-radius:9px;background:var(--accent-soft);display:grid;place-items:center;color:var(--accent)}
+  .brand svg{width:20px;height:20px}
+  .ttl{font-size:13px;font-weight:700}
+  .stl{font-size:11px;color:var(--mute)}
+  .tabs{flex:none;display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;position:relative}
+  .tabs button{all:unset;cursor:pointer;padding:5px 16px;border-radius:7px;font-size:11.5px;font-weight:700;color:var(--mute);position:relative;z-index:1;transition:color .18s}
+  .tabs button[aria-selected="true"]{color:var(--ink)}
+  .tabs .pill{position:absolute;top:3px;bottom:3px;border-radius:7px;background:var(--surface-top);border:1px solid var(--border-strong);transition:left .22s cubic-bezier(.2,.8,.2,1),width .22s cubic-bezier(.2,.8,.2,1);z-index:0}
+  .tbtn{all:unset;cursor:pointer;height:32px;padding:0 12px;border:1px solid var(--border);border-radius:8px;display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;color:var(--dim);transition:background .15s,color .15s,transform .1s}
+  .tbtn:hover{background:var(--surface-hi);color:var(--ink)}
+  .tbtn:active{transform:translateY(1px)}
+  .tbtn.primary{background:var(--accent);border-color:transparent;color:#fff}
+  .tbtn.primary:hover{background:var(--accent-hi)}
+  .tbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .tbtn .lbl{}
+  .live{flex:none;display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:12px;border:1px solid rgba(17,201,160,.35);background:rgba(17,201,160,.1);color:var(--lv5);font-size:11px;font-weight:700;letter-spacing:.04em}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--lv5);box-shadow:0 0 0 0 rgba(17,201,160,.5);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(17,201,160,.45)}70%{box-shadow:0 0 0 9px rgba(17,201,160,0)}100%{box-shadow:0 0 0 0 rgba(17,201,160,0)}}
+  .body{flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0}
+  .foot{height:32px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 8px;font-size:11px;color:var(--mute);flex:none}
+  .foot .dot{width:7px;height:7px;border-radius:50%;background:var(--lv5);margin-left:8px}
+  .foot .chip2{border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:2px 8px;font-size:10.5px}
+
+  /* --- 히어로 --- */
+  .hero{display:flex;gap:12px;height:184px;flex:none}
+  .hero-main{flex:0 0 46%;padding:20px;display:flex;flex-direction:column}
+  .hero-main .ssid{font-size:15px;font-weight:700;margin:6px 0 2px}
+  .hero-val{display:flex;align-items:baseline;gap:6px;margin-top:8px}
+  .hero-val b{font-size:54px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;transition:color .3s}
+  .hero-val span{font-size:13px;font-weight:700;opacity:.75}
+  .hero .adv{margin-top:auto;font-size:11.5px;color:var(--dim)}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:56px}
+  .bars i{width:5px;border-radius:2px;background:rgba(102,113,127,.42);transition:height .5s cubic-bezier(.2,.8,.2,1),background .4s}
+  .ring-card{flex:0 0 20%;padding:10px 12px;display:flex;flex-direction:column;align-items:center}
+  .ring-wrap{position:relative;width:132px;height:132px;margin-top:8px}
+  .ring-wrap svg{transform:rotate(0deg)}
+  .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring-center b{font-size:26px;font-variant-numeric:tabular-nums}
+  .ring-center span{font-size:10.5px;color:var(--mute);margin-top:2px}
+  .kpis{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;min-width:0}
+  .kpi{padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between}
+  .kpi .v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi .v small{font-size:11px;font-weight:700;opacity:.7;margin-left:3px}
+  .kpi .s{font-size:10.5px;color:var(--mute)}
+  .spark{position:absolute;right:12px;bottom:10px;width:52px;height:22px;opacity:.85}
+
+  .mid{display:flex;gap:12px;flex:1;min-height:0}
+  .stream{flex:0 0 62%;padding:16px;display:flex;flex-direction:column;min-height:0}
+  .stream-head{display:flex;justify-content:space-between;align-items:flex-start}
+  .stream-head .avg{font-size:11.5px;color:var(--dim);margin-top:4px}
+  .mini-seg{display:inline-flex;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:2px}
+  .mini-seg button{all:unset;cursor:pointer;font-size:10.5px;font-weight:700;color:var(--mute);padding:3px 9px;border-radius:6px}
+  .mini-seg button[aria-pressed="true"]{background:var(--surface-top);color:var(--ink)}
+  .stream canvas{width:100%;flex:1;min-height:0;display:block;margin-top:6px}
+  .stream .note{font-size:10.5px;color:var(--mute);margin-top:4px}
+  .spec{flex:1;padding:16px;display:flex;flex-direction:column;min-height:0}
+  .spec canvas{width:100%;flex:1;min-height:0;margin-top:6px}
+
+  .tablecard{padding:16px 16px 8px;height:248px;flex:none;display:flex;flex-direction:column}
+  .tablehead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .search{display:flex;align-items:center;gap:7px;height:30px;width:172px;background:var(--surface-hi);border:1px solid var(--border);border-radius:6px;padding:0 9px;color:var(--mute);font-size:11px}
+  .search svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.9}
+  table.new{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed}
+  table.new th{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:700;text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);position:relative}
+  table.new th.r{text-align:right}
+  table.new td{padding:6px 10px;color:var(--dim);border-bottom:1px solid rgba(35,42,53,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  table.new td.r{text-align:right}
+  table.new tr.mine td{color:var(--ink);font-weight:700}
+  table.new tbody tr{transition:background .12s}
+  table.new tbody tr:hover{background:var(--surface-hi)}
+  .sbar{height:8px;border-radius:4px;background:rgba(102,113,127,.28);overflow:hidden;width:76px;display:inline-block;vertical-align:middle}
+  .sbar i{display:block;height:100%;border-radius:4px;transition:width .5s}
+  .dotmine{display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:middle}
+
+  /* ================= 개선 후: 음영 분석기 ================= */
+  .p-app{background:var(--bg);display:flex;flex-direction:column;color:var(--ink)}
+  .p-menu{height:26px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:16px;align-items:center;padding:0 12px;font-size:11px;color:var(--dim)}
+  .p-head{height:72px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px 0 20px;gap:10px;flex:none}
+  .p-head .stats{display:flex;margin-left:auto;margin-right:12px}
+  .p-stat{padding:0 14px;border-left:1px solid var(--border);min-width:112px}
+  .p-stat .c{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:700}
+  .p-stat .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .p-body{flex:1;display:flex;min-height:0}
+  .rail{width:64px;background:var(--surface);border-right:1px solid var(--border);padding:8px 0;display:flex;flex-direction:column;gap:4px;flex:none}
+  .rail button{all:unset;cursor:pointer;height:58px;margin:0 4px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--mute);font-size:9.5px;position:relative;transition:background .15s,color .15s}
+  .rail button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .rail button:hover{background:var(--surface-hi);color:var(--ink)}
+  .rail button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+  .rail button[aria-pressed="true"]::before{content:"";position:absolute;left:-4px;top:12px;bottom:12px;width:2px;background:var(--accent);border-radius:2px}
+  .rail .gap{height:8px}
+  .p-left{width:236px;border-right:1px solid var(--border);padding:8px;flex:none}
+  .p-right{width:276px;border-left:1px solid var(--border);padding:8px;display:flex;flex-direction:column;gap:8px;flex:none}
+  .p-card{padding:12px}
+  .p-card h5{font-size:12px;margin:0 0 2px;font-weight:700}
+  .p-card .cs{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:700;margin:10px 0 5px}
+  .p-sel{height:28px;background:var(--surface-hi);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;justify-content:space-between;padding:0 9px;font-size:11.5px;color:var(--ink)}
+  .p-sel span{color:var(--mute);font-size:9px}
+  .p-model{height:172px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:6px;overflow:hidden;font-size:11px}
+  .p-model div{padding:5px 8px;color:var(--dim);border-bottom:1px solid rgba(35,42,53,.5);display:flex;justify-content:space-between;transition:background .12s}
+  .p-model div:hover{background:var(--surface-hi)}
+  .p-model div.sel{background:var(--accent-soft);color:var(--ink);font-weight:700}
+  .p-model div em{font-style:normal;color:var(--mute);font-size:10px}
+  .p-info{font-size:10.5px;color:var(--dim);margin-top:8px;line-height:1.5}
+  .p-canvas{flex:1;position:relative;background:#0e1116;min-width:0;overflow:hidden}
+  .p-canvas canvas{position:absolute;inset:0;width:100%;height:100%}
+  .p-legend{position:absolute;left:12px;bottom:12px;width:252px;height:120px;background:rgba(16,20,27,.94);border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font-size:10px;color:var(--mute)}
+  .p-legend .cap2{margin-bottom:4px;display:flex;justify-content:space-between}
+  .p-legend .grad{height:10px;border-radius:2px;background:linear-gradient(90deg,var(--lv1),var(--lv2),var(--lv3),var(--lv4),var(--lv5));border:1px solid var(--border-strong)}
+  .p-legend .ticks{display:flex;justify-content:space-between;font-size:9px;margin-top:2px;color:var(--mute)}
+  .p-legend .dead{display:flex;align-items:center;gap:7px;margin-top:6px;color:var(--dim);font-size:10.5px}
+  .p-legend .dead b{width:14px;height:14px;border-radius:3px;background:var(--lv1);position:relative;overflow:hidden}
+  .p-legend .dead b::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.45) 0 1px,transparent 1px 4px)}
+  .p-zoom{position:absolute;right:12px;bottom:12px;display:flex;flex-direction:column;gap:4px}
+  .p-zoom button{all:unset;cursor:pointer;width:30px;height:30px;display:grid;place-items:center;background:#141820;border:1px solid var(--border);border-radius:8px;color:var(--dim)}
+  .p-zoom button:hover{background:var(--surface-hi);color:var(--ink)}
+  .p-zoom svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+  .p-row{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--mute);margin-top:6px}
+  .p-ring{display:flex;align-items:center;gap:12px;margin-top:6px}
+  .p-ring .num{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+  .p-line{display:flex;justify-content:space-between;font-size:10.5px;padding:3px 0;border-bottom:1px solid rgba(35,42,53,.5)}
+  .p-line span{color:var(--mute)}
+  .p-line b{font-weight:700;font-variant-numeric:tabular-nums}
+  .p-note{font-size:9.5px;color:var(--mute);margin-top:6px;line-height:1.5}
+
+  /* 주석 배지 */
+  .annot{position:absolute;z-index:6;width:20px;height:20px;border-radius:50%;background:#0b0e13;border:1.5px solid var(--accent);color:var(--accent-hi);font:700 11px/17px "Segoe UI",sans-serif;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.5);pointer-events:none}
+  .annots{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px}
+  .annots div{display:flex;gap:9px;font-size:12.5px;color:var(--dim);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 12px}
+  .annots b{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent-hi);font:700 11px/17px "Segoe UI",sans-serif;text-align:center}
+  body.embed header.top,body.embed .caption,body.embed .annots,body.embed .annot{display:none!important}
+  body.embed main{padding:0;max-width:none}
+  body.embed .frame{border-radius:0;border:0;box-shadow:none}
+  @media (max-width:900px){ .win{zoom:.62} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>무선시그널분석기 — UI 고도화 전 / 후</h1>
+    <div class="sub">wocllub/wifi-survey-tools · 브랜치 design/premium-ui · 실제 앱 구조를 옮긴 목업(애니메이션 포함)</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg" id="appseg">
+    <button data-app="signal" aria-pressed="true">신호 체크</button>
+    <button data-app="planner" aria-pressed="false">음영 분석기</button>
+  </div>
+  <div class="seg" id="modeseg">
+    <button data-mode="after" aria-pressed="true">개선 후</button>
+    <button data-mode="before" aria-pressed="false">개선 전</button>
+    <button data-mode="both" aria-pressed="false">나란히</button>
+  </div>
+  <div class="toggle" id="motion" aria-pressed="true" role="switch" tabindex="0"><span class="sw"><i></i></span>모션</div>
+  <div class="toggle" id="calls" aria-pressed="true" role="switch" tabindex="0"><span class="sw"><i></i></span>주석</div>
+</header>
+
+<main id="stage"></main>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (s,r)=> (r||document).querySelector(s);
+  const el = (tag, cls, html)=>{ const n=document.createElement(tag); if(cls) n.className=cls; if(html!=null) n.innerHTML=html; return n; };
+  const icon = {
+    wifi:'<svg viewBox="0 0 24 24"><path d="M4.5 9.5a15 15 0 0 1 15 0M7.6 12.6a10 10 0 0 1 8.8 0M10.6 15.6a5 5 0 0 1 2.8 0"/><circle cx="12" cy="18.4" r="1.2" fill="currentColor" stroke="none"/></svg>',
+    scan:'<svg viewBox="0 0 24 24"><path d="M19.5 8.2A8.5 8.5 0 1 0 20 12"/><path d="M19.6 4.4v4.2h-4.2"/><circle cx="12" cy="12" r="2.4"/></svg>',
+    record:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></svg>',
+    export:'<svg viewBox="0 0 24 24"><path d="M12 4v10M8 10.5l4 4 4-4M5 19h14"/></svg>',
+    folder:'<svg viewBox="0 0 24 24"><path d="M3.5 7.5h6l2 2.5h9v8.5a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/></svg>',
+    check:'<svg viewBox="0 0 24 24"><path d="M5 12.5l5 5 9-10"/></svg>',
+    search:'<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15.5 15.5L20 20"/></svg>',
+    target:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+    ap:'<svg viewBox="0 0 24 24"><rect x="4" y="14" width="16" height="6" rx="1.4"/><path d="M7.5 9a6 6 0 0 1 9 0M9.8 11.4a3 3 0 0 1 4.4 0M12 14v-2"/></svg>',
+    wall:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="1"/><path d="M3.5 10h17M3.5 14.5h17M9 5.5V10M15 10v4.5M9 14.5V18.5"/></svg>',
+    area:'<svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" stroke-dasharray="3 2.4"/></svg>',
+    ruler:'<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M6 8v4M10 8v3M14 8v4M18 8v3"/></svg>',
+    plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    minus:'<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
+    grid:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16"/></svg>',
+    trash:'<svg viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7l1-2.5h3l1 2.5M6.5 7l1 13h9l1-13M10 10v7M14 10v7"/></svg>',
+    layers:'<svg viewBox="0 0 24 24"><path d="M12 4l8 4.5-8 4.5-8-4.5zM4 13l8 4.5 8-4.5"/></svg>'
+  };
+  const S = (iconName, cls)=> el('span', cls||'', icon[iconName]||'');
+
+  // ---------- 상태 ----------
+  const state = { app:'signal', mode:'after', motion:true, calls:true };
+  let live = 1;                    // 0..1 모션 세기
+  let rafs = [];
+
+  // ---------- 개선 전: 신호 체크 ----------
+  function beforeSignal(){
+    const w = el('div','win');
+    const app = el('div','appw oldapp');
+    // 헤더
+    const head = el('div','oldcard oldhead');
+    head.innerHTML = `<div>
+        <div class="cap">연결된 네트워크</div>
+        <div class="ssid">iptime_5G</div>
+        <div class="adv">일반 사용에는 무난합니다. 화상 회의나 게임은 공유기 가까이에서 쓰세요.</div>
+      </div>
+      <div class="right">
+        <div>
+          <div class="dbm">-53 dBm</div>
+          <div class="lvl">좋음&nbsp;·&nbsp;품질 82%</div>
+        </div>
+        <div class="oldbars"><i style="height:18px" class="on"></i><i style="height:31px" class="on"></i><i style="height:44px" class="on"></i><i style="height:57px" class="on"></i><i style="height:70px"></i></div>
+      </div>`;
+    app.appendChild(head);
+
+    // 타일 6개
+    const tiles = el('div','oldtiles');
+    [['채널','44','5 GHz · 같은 채널 AP 2개'],['링크 속도','585 Mbps','수신 585 / 송신 585'],
+     ['공유기 응답 시간','12 ms','평균 14 ms'],['패킷 손실','0%','최근 41회 기준'],
+     ['규격 / 보안','Wi-Fi 6','802.11ax · WPA2'],['측정 횟수','1247회','경과 00:20:47']]
+      .forEach(([t,v,s])=>{ const d=el('div','oldcard oldtile'); d.innerHTML=`<div class="t">${t}</div><div class="v">${v}</div><div class="s">${s}</div>`; tiles.appendChild(d); });
+    app.appendChild(tiles);
+
+    // 그래프
+    const gr = el('div','oldcard oldgraph');
+    gr.innerHTML = `<div class="h">신호 추이 · 최근 3분 <span>평균 -57 · 최저 -71 · 최고 -48 dBm</span></div>
+      <svg viewBox="0 0 1080 262" preserveAspectRatio="none" style="width:100%;height:238px">
+        ${[-30,-50,-60,-70,-80,-90].map((d,i)=>{ const y=20+i*36; return `<line x1="46" y1="${y}" x2="1070" y2="${y}" stroke="#e2e6ec"/><text x="40" y="${y+4}" fill="#626b78" font-size="11" text-anchor="end">${d}</text>`; }).join('')}
+        <rect x="46" y="20" width="1024" height="34" fill="#f2c63d" opacity="0.08"/>
+        <rect x="46" y="54" width="1024" height="36" fill="#84c03a" opacity="0.08"/>
+        <polyline fill="none" stroke="#0067c0" stroke-width="2" stroke-linejoin="round"
+          points="46,132 90,120 140,126 190,108 250,116 300,96 360,104 420,88 480,96 540,72 600,84 660,96 720,88 780,74 840,86 900,78 960,92 1010,84 1070,96"/>
+        <circle cx="1070" cy="96" r="4.5" fill="#0067c0"/>
+        <text x="46" y="248" fill="#626b78" font-size="11">3분 전</text>
+        <text x="1070" y="248" fill="#626b78" font-size="11" text-anchor="end">지금</text>
+      </svg>`;
+    app.appendChild(gr);
+
+    // 목록
+    const list = el('div','oldcard oldlist');
+    const rows = [
+      ['● iptime_5G','-53 dBm','좋음','44','5 GHz','WPA2','F0:D1:A9:3C:21:8A',true],
+      ['SKT_WIFI_5G_2F','-61 dBm','좋음','44','5 GHz','WPA2','5C:E2:8C:11:02:9D',false],
+      ['iptime','-64 dBm','좋음','6','2.4 GHz','WPA2','F0:D1:A9:3C:21:8B',false],
+      ['KT_GIGA_5G','-70 dBm','보통','149','5 GHz','WPA2','9C:3A:AF:2B:77:10',false],
+      ['guest-wifi','-78 dBm','약함','11','2.4 GHz','개방','24:A4:3C:88:12:01',false],
+      ['Cafe_Public','-84 dBm','매우 약함','1','2.4 GHz','개방','00:1A:1E:4C:22:31',false],
+      ['DIRECT-4F-HP','-88 dBm','매우 약함','6','2.4 GHz','WPA2','98:FA:9B:33:44:55',false]
+    ];
+    list.innerHTML = `<div class="ttl">주변 Wi-Fi · 액세스 포인트 14개</div>
+      <table class="lv"><thead><tr><th>네트워크 이름</th><th class="r">신호</th><th>강도</th><th class="r">채널</th><th>대역</th><th>보안</th><th>BSSID</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr class="${r[7]?'mine':''}"><td>${r[0]}</td><td class="r" style="color:${r[7]?'#2e7d32':'#1c2129'}">${r[1]}</td><td style="color:${r[7]?'#2e7d32':'#1c2129'}">${r[2]}</td><td class="r">${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join('')}</tbody></table>`;
+    app.appendChild(list);
+
+    const bot = el('div','oldbottom');
+    bot.innerHTML = `<div class="oldbtn">지금 스캔</div><div class="oldbtn" style="width:118px">CSV 기록 시작</div><div class="oldstatus">마지막 스캔 14:02:31 · 1초마다 측정</div>`;
+    app.appendChild(bot);
+    w.appendChild(app);
+    return w;
+  }
+
+  // ---------- 개선 후: 신호 체크 ----------
+  function afterSignal(){
+    const w = el('div','win');
+    const app = el('div','appw newapp');
+
+    const top = el('div','topbar');
+    top.innerHTML = `<div class="brand">${icon.wifi}</div>
+      <div><div class="ttl">무선 시그널 분석</div><div class="stl">Wi-Fi 신호 체크 · 실시간 계측</div></div>
+      <div style="margin-left:auto"></div>
+      <div class="tabs" id="tabs"><div class="pill"></div>
+        <button aria-selected="true">실시간</button><button aria-selected="false">세션</button><button aria-selected="false">채널</button><button aria-selected="false">설정</button>
+      </div>
+      <div class="live"><i></i>LIVE</div>
+      <button class="tbtn">${icon.scan}<span>스캔</span></button>
+      <button class="tbtn">${icon.record}<span>기록</span></button>
+      <button class="tbtn">${icon.export}<span>PNG</span></button>`;
+    app.appendChild(top);
+
+    const body = el('div','body');
+    const hero = el('div','hero');
+    const main = el('div','card hero-main');
+    main.innerHTML = `<div class="cap2">연결된 네트워크</div>
+      <div class="ssid">iptime_5G</div>
+      <div class="hero-val"><b id="dbm" style="color:var(--lv3)">-53</b><span style="color:var(--lv3)">dBm</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <span class="chip" id="lvlchip" style="color:var(--lv3);border-color:rgba(242,198,61,.4);background:rgba(242,198,61,.12)">보통</span>
+        <span style="font-size:11.5px;color:var(--dim)">품질 <b id="qual">82</b>%</span>
+      </div>
+      <div class="adv">일반 사용에는 무난합니다. 지연에 민감한 작업은 AP 가까이에서 하세요.</div>
+      <div class="bars" id="bars" style="position:absolute;right:20px;top:34px"></div>`;
+    hero.appendChild(main);
+
+    const ringC = el('div','card ring-card');
+    ringC.innerHTML = `<div class="cap2" style="align-self:flex-start">링크 품질</div>
+      <div class="ring-wrap">
+        <svg width="132" height="132" viewBox="0 0 132 132">
+          <circle cx="66" cy="66" r="54" fill="none" stroke="rgba(102,113,127,.28)" stroke-width="7" stroke-linecap="round" stroke-dasharray="254 340" transform="rotate(135 66 66)"/>
+          <circle id="ringArc" cx="66" cy="66" r="54" fill="none" stroke="var(--lv3)" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 340" transform="rotate(135 66 66)" style="transition:stroke-dasharray .8s cubic-bezier(.2,.8,.2,1)"/>
+        </svg>
+        <div class="ring-center"><b id="ringNum">82%</b><span id="ringSub">보통</span></div>
+      </div>`;
+    hero.appendChild(ringC);
+
+    const kpis = el('div','kpis');
+    const kd = [['채널','44','5 GHz · 같은 채널 2대',''],['링크 속도','585','Mbps','수신 585 / 송신 585'],
+                ['공유기 응답','12','ms','평균 14 ms · 41회'],['패킷 손실','0.0','%','최근 41회']];
+    kd.forEach(([c,v,u,s])=> kpis.appendChild(kpi(c,v,u,s,'')) );
+    hero.appendChild(kpis);
+    body.appendChild(hero);
+
+    const mid = el('div','mid');
+    const st = el('div','card stream');
+    st.innerHTML = `<div class="stream-head">
+        <div><div class="cap2">신호 추이</div><div class="avg" id="avgTxt">평균 -56.4 · 최저 -71 · 최고 -48 dBm · 62개 표본</div></div>
+        <div class="mini-seg"><button>1분</button><button aria-pressed="true">3분</button><button>5분</button><button>10분</button></div>
+      </div>
+      <canvas id="streamC"></canvas>
+      <div class="note">최근 3분 · 점선은 저장한 세션(비교), 주황 점선은 약전계 기준 -70 dBm</div>`;
+    mid.appendChild(st);
+
+    const sp = el('div','card spec');
+    sp.innerHTML = `<div class="stream-head"><div><div class="cap2">채널 점유</div><div class="avg" style="font-size:11.5px;color:var(--dim)">같은 채널 2대, 인접 채널 1대. 149번 채널이 가장 덜 붐빕니다.</div></div>
+      <div class="mini-seg"><button aria-pressed="true">2.4G</button><button>5G</button><button>6G</button></div></div>
+      <canvas id="specC"></canvas>
+      <div class="note">막대 높이는 AP 수입니다. 액센트는 권장 채널입니다.</div>`;
+    mid.appendChild(sp);
+    body.appendChild(mid);
+
+    const tb = el('div','card tablecard');
+    tb.innerHTML = `<div class="tablehead">
+        <div><div class="cap2">주변 네트워크</div><div style="font-size:11.5px;color:var(--dim);margin-top:4px">14개 · 검색/필터 적용</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="search">${icon.search}SSID · BSSID · 제조사 검색</div>
+          <div class="mini-seg"><button aria-pressed="true">전체</button><button>2.4G</button><button>5G</button><button>6G</button></div>
+        </div>
+      </div>
+      <table class="new" id="aptable" style="margin-top:8px">
+        <colgroup><col style="width:24%"><col style="width:9%"><col style="width:11%"><col style="width:7%"><col style="width:9%"><col style="width:12%"><col style="width:12%"><col style="width:16%"></colgroup>
+        <thead><tr><th>네트워크</th><th class="r">신호 ▾</th><th>세기</th><th class="r">채널</th><th>대역</th><th>보안</th><th>제조사</th><th>BSSID</th></tr></thead>
+        <tbody></tbody>
+      </table>`;
+    body.appendChild(tb);
+    app.appendChild(body);
+
+    const foot = el('div','foot');
+    foot.innerHTML = `<span class="dot"></span><span style="color:var(--lv5);font-weight:700;font-size:10px;letter-spacing:.06em">측정 중</span>
+      <span id="footmsg">12초 전 스캔 · 1247회 측정</span>
+      <div style="margin-left:auto;display:flex;gap:6px"><span class="chip2">간격 1초</span><span class="chip2">스무딩 3회</span><span class="chip2">모션 켜짐</span></div>`;
+    app.appendChild(foot);
+    w.appendChild(app);
+
+    // 애니메이션
+    buildBars($('#bars', w));
+    wireTabs($('#tabs', w));
+    animateSignal(w);
+    return w;
+  }
+
+  function kpi(cap, val, unit, sub, color){
+    const d = el('div','card kpi');
+    d.innerHTML = `<div class="cap2">${cap}</div>
+      <div class="v mono" style="${color?`color:${color}`:''}">${val}${unit?`<small>${unit}</small>`:''}</div>
+      <div class="s">${sub}</div>`;
+    return d;
+  }
+
+  function buildBars(host){
+    if(!host) return;
+    const heights = [26,38,46,54,56];
+    host.innerHTML = heights.map((h,i)=>`<i data-h="${h}" style="height:${h}px;background:var(--lv3)"></i>`).join('');
+  }
+
+  function wireTabs(tabs){
+    if(!tabs) return;
+    const pill = $('.pill', tabs), btns = [...tabs.querySelectorAll('button')];
+    function place(){
+      const on = tabs.querySelector('button[aria-selected="true"]');
+      pill.style.left = on.offsetLeft + 'px';
+      pill.style.width = on.offsetWidth + 'px';
+    }
+    btns.forEach(b=> b.addEventListener('click', ()=>{
+      btns.forEach(x=> x.setAttribute('aria-selected', x===b ? 'true':'false'));
+      place();
+    }));
+    requestAnimationFrame(place);
+  }
+
+  // 스트림 그래프 (실제 앱의 StreamGraph.cs 와 같은 규칙: 최근 N초 윈도우, Catmull-Rom 유사 보간, 그라데이션 영역)
+  function animateSignal(win){
+    const canvas = $('#streamC', win), spec = $('#specC', win);
+    const data = [];
+    let t0 = 0, last = 0;
+    const marks = [];
+    for(let i=0;i<138;i++){ data.push({ t:i*1.4, v:-56 + Math.sin(i*0.36)*7 + (Math.random()*3-1.5) }); }
+    const ghost = data.map(d=>({ t:d.t, v:d.v + 5 - Math.sin(d.t*0.2)*3 }));
+
+    function drawStream(now){
+      if(!canvas) return;
+      const r = canvas.getBoundingClientRect();
+      const dpr = Math.min(2, window.devicePixelRatio||1);
+      const W = Math.max(320, r.width), H = Math.max(120, r.height);
+      canvas.width = W*dpr; canvas.height = H*dpr;
+      const g = canvas.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+      g.clearRect(0,0,W,H);
+      const padL = 40, padR = 8, padT = 6, padB = 22;
+      const x0=padL, x1=W-padR, y0=padT, y1=H-padB;
+      const floor=-100, ceil=-20;
+      const Y = v => y0 + (ceil - Math.max(floor,Math.min(ceil,v)))/(ceil-floor)*(y1-y0);
+
+      // 그리드
+      g.font = '10px Segoe UI, sans-serif';
+      for(let v=ceil; v>=floor; v-=10){
+        const y=Y(v);
+        g.strokeStyle = v%20===0 ? 'rgba(35,42,53,.9)' : 'rgba(35,42,53,.45)';
+        g.beginPath(); g.moveTo(x0,Math.round(y)+.5); g.lineTo(x1,Math.round(y)+.5); g.stroke();
+        if(v%20===0){ g.fillStyle='#66717f'; g.textAlign='right'; g.fillText(String(v), x0-8, y+3); }
+      }
+      // 약전계 기준
+      const ty = Y(-70);
+      g.save(); g.setLineDash([4,4]); g.strokeStyle='rgba(255,154,61,.6)'; g.beginPath(); g.moveTo(x0,ty); g.lineTo(x1,ty); g.stroke(); g.restore();
+      g.fillStyle='rgba(255,154,61,.85)'; g.textAlign='right'; g.fillText('약전계 -70', x1-4, ty-6);
+
+      const nowT = data[data.length-1].t;
+      const span = 180;
+      const px = (x1-x0)/span;
+      const X = t => x1 - (nowT - t)*px;
+
+      function path(list){
+        const pts = list.filter(p=> X(p.t) >= x0-4).map(p=>({x:X(p.t), y:Y(p.v)}));
+        if(pts.length<2) return null;
+        const p = new Path2D(); p.moveTo(pts[0].x, pts[0].y);
+        for(let i=0;i<pts.length-1;i++){
+          const a=pts[i], b=pts[i+1];
+          const cx=(a.x+b.x)/2;
+          p.bezierCurveTo(cx,a.y,cx,b.y,b.x,b.y);
+        }
+        return {path:p, pts};
+      }
+      const main = path(data);
+      if(main){
+        const grad = g.createLinearGradient(0,y0,0,y1);
+        grad.addColorStop(0,'rgba(242,198,61,.34)'); grad.addColorStop(1,'rgba(242,198,61,.02)');
+        g.save(); g.beginPath(); g.moveTo(main.pts[0].x,y1);
+        main.pts.forEach(p=>g.lineTo(p.x,p.y)); g.lineTo(main.pts[main.pts.length-1].x,y1); g.closePath();
+        g.fillStyle=grad; g.fill(); g.restore();
+        g.strokeStyle='#f5d263'; g.lineWidth=2; g.lineJoin='round'; g.stroke(main.path);
+      }
+      const gh = path(ghost);
+      if(gh){ g.save(); g.setLineDash([5,4]); g.strokeStyle='rgba(152,164,181,.6)'; g.lineWidth=1.5; g.stroke(gh.path); g.restore(); }
+
+      // 현재 값 점 + 빛무리
+      if(main){
+        const lastP = main.pts[main.pts.length-1];
+        const gg = g.createRadialGradient(lastP.x,lastP.y,0,lastP.x,lastP.y,18);
+        gg.addColorStop(0,'rgba(242,198,61,.5)'); gg.addColorStop(1,'rgba(242,198,61,0)');
+        g.fillStyle=gg; g.beginPath(); g.arc(lastP.x,lastP.y,18,0,7); g.fill();
+        g.fillStyle='#f2c63d'; g.beginPath(); g.arc(lastP.x,lastP.y,3.6,0,7); g.fill();
+      }
+      // 시간축
+      g.fillStyle='#66717f';
+      [-180,-120,-60,0].forEach(s=>{
+        const x = x1 + s*px;
+        if(x < x0) return;
+        g.textAlign = s===0 ? 'right' : s===-180 ? 'left' : 'center';
+        g.fillText(s===0?'지금':('-'+(Math.abs(s)/60)+'분'), s===0?x1:x, H-6);
+      });
+      // 데이터 갱신
+      if(state.motion){
+        nowT;
+        const nextT = data[data.length-1].t + 0.6;
+        const v = -56 + Math.sin(nextT*0.3)*9 + (Math.random()*4-2);
+        data.push({t:nextT, v});
+        ghost.push({t:nextT, v: v + 5 - Math.sin(nextT*0.2)*3});
+        while(data[0].t < nextT - span*1.6){ data.shift(); ghost.shift(); }
+        const lastV = Math.round(v);
+        const el2 = $('#dbm', win);
+        if(el2){ el2.textContent = String(lastV); el2.style.color = lastV>=-60?'var(--lv4)':lastV>=-70?'var(--lv3)':lastV>=-80?'var(--lv2)':'var(--lv1)'; }
+        const q = Math.max(40, Math.min(99, Math.round((lastV+100)*1.7)));
+        const qEl = $('#qual', win); if(qEl) qEl.textContent = String(q);
+        const arc = $('#ringArc', win);
+        if(arc){ const len = 254*q/100; arc.setAttribute('stroke-dasharray', len.toFixed(1)+' 340'); arc.style.stroke = lastV>=-60?'var(--lv4)':lastV>=-70?'var(--lv3)':'var(--lv2)'; }
+        const rn = $('#ringNum', win); if(rn) rn.textContent = q+'%';
+        const chip = $('#lvlchip', win);
+        if(chip){
+          const name = lastV>=-50?'매우 좋음':lastV>=-60?'좋음':lastV>=-70?'보통':lastV>=-80?'약함':'매우 약함';
+          const tone = lastV>=-50?'var(--lv5)':lastV>=-60?'var(--lv4)':lastV>=-70?'var(--lv3)':lastV>=-80?'var(--lv2)':'var(--lv1)';
+          chip.textContent = name; chip.style.color = tone; chip.style.borderColor = 'rgba(255,255,255,.12)';
+          const rs = $('#ringSub', win); if(rs) rs.textContent = name;
+          // 표의 연결된 행도 같은 값으로 (실제 앱과 동일)
+          const firstCell = win.querySelector('#aptable tbody tr.mine td:nth-child(2)');
+          if(firstCell){ firstCell.textContent = lastV + ' dBm'; firstCell.style.color = tone; }
+          const firstBar = win.querySelector('#aptable tbody tr.mine .sbar i');
+          if(firstBar){ firstBar.style.width = Math.max(8, Math.min(100, (lastV+100)*2)) + '%'; firstBar.style.background = tone; }
+          document.querySelectorAll('#bars i', win).length;
+          const bars = [...win.querySelectorAll('#bars i')];
+          const on = lastV>=-50?5:lastV>=-60?4:lastV>=-70?3:lastV>=-80?2:1;
+          bars.forEach((b,i)=> b.style.background = i<on ? tone : 'rgba(102,113,127,.42)');
+        }
+      }
+      if(state.motion && live) rafs.push(requestAnimationFrame(()=>setTimeout(()=>drawStream(now), 120)));
+    }
+    requestAnimationFrame(()=>drawStream(0));
+    if(spec) drawSpectrum(spec);
+    buildApTable(win);
+  }
+
+  function drawSpectrum(canvas){
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio||1);
+    const W = Math.max(280,r.width), H = Math.max(120,r.height);
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    const g = canvas.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+    g.clearRect(0,0,W,H);
+    const ch = [1,2,3,4,5,6,7,8,9,10,11,12,13];
+    const count = [3,1,0,2,1,4,2,0,1,0,2,1,0];
+    const padL=8,padR=8,padT=22,padB=18;
+    const bw = (W-padL-padR)/ch.length;
+    const max = 4;
+    g.font='10px Segoe UI,sans-serif'; g.textAlign='center';
+    ch.forEach((c,i)=>{
+      const h = (count[i]/max)*(H-padT-padB);
+      const x = padL + i*bw + 2;
+      const y = H-padB-h;
+      const tone = count[i]>=3 ? '#ff5d6c' : count[i]>=2 ? '#f2c63d' : '#5fd16a';
+      const grad = g.createLinearGradient(0,y,0,H-padB);
+      grad.addColorStop(0, tone); grad.addColorStop(1, tone+'22');
+      g.fillStyle = grad;
+      roundRect(g, x, y, bw-4, Math.max(2,h), 3); g.fill();
+      if(i===5 || i===1){
+        g.fillStyle = 'rgba(242,198,61,.9)'; g.textAlign='center';
+      }
+      g.fillStyle = '#66717f'; g.textAlign='center';
+      if(i%2===0) g.fillText(String(c), x+(bw-4)/2, H-6);
+    });
+    // 권장 채널 표시
+    const idx = 12, x = padL + idx*bw + 2;
+    const h = (count[idx]/max)*(H-padT-padB);
+    const py = Math.max(padT, H-padB-h-20);
+    g.fillStyle='rgba(17,201,160,.16)';
+    roundRect(g, x-7, py, bw+10, 16, 8); g.fill();
+    g.fillStyle='#11c9a0'; g.textAlign='center'; g.font='700 9.5px Segoe UI,sans-serif'; g.textBaseline='middle';
+    g.fillText('추천', x+(bw-4)/2, py+8.5);
+    g.textBaseline='alphabetic';
+  }
+  function roundRect(g,x,y,w,h,r){ r=Math.min(r,w/2,h/2); g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+
+  function buildApTable(win){
+    const tb = $('#aptable tbody', win); if(!tb) return;
+    const rows = [
+      ['iptime_5G','-53','44','5 GHz','WPA2','EFM(ipTIME)','F0:D1:A9:3C:21:8A',true,0.94],
+      ['SKT_WIFI_5G_2F','-61','44','5 GHz','WPA2','KT','5C:E2:8C:11:02:9D',false,0.78],
+      ['iptime','-64','6','2.4 GHz','WPA2','EFM(ipTIME)','F0:D1:A9:3C:21:8B',false,0.72],
+      ['KT_GIGA_5G','-70','149','5 GHz','WPA2','KT','9C:3A:AF:2B:77:10',false,0.6],
+      ['guest-wifi','-78','11','2.4 GHz','개방','Samsung','24:A4:3C:88:12:01',false,0.44]
+    ];
+    tb.innerHTML = rows.map(r=>{
+      const tone = r[8] ? '#11c9a0' : (parseInt(r[1])>=-60?'#5fd16a':parseInt(r[1])>=-70?'#f2c63d':'#ff9a3d');
+      return `<tr class="${r[7]?'mine':''}">
+        <td>${r[7]?'<span class="dotmine"></span>':''}${r[0]}</td>
+        <td class="r" style="color:${tone}">${r[1]} dBm</td>
+        <td><span class="sbar"><i style="width:${r[9]*100}%;background:${tone}"></i></span></td>
+        <td class="r">${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`;
+    }).join('');
+  }
+
+  // ---------- 개선 전: 음영 분석기 ----------
+  function beforePlanner(){
+    const w = el('div','win');
+    const app = el('div','appw oldplanner');
+    app.innerHTML = `<div class="oldmenu"><span>파일</span><span>편집</span><span>보기</span></div>
+      <div class="oldbody">
+        <div class="oldside">
+          <h4 style="margin-top:0">작업 도구</h4>
+          <div class="oldradio on">선택 / 이동</div>
+          <div class="oldradio">AP 배치</div>
+          <div class="oldradio">벽 그리기</div>
+          <div class="oldradio">분석 범위 지정</div>
+          <div class="oldradio">축척 설정</div>
+          <div class="oldradio">현장 실측</div>
+          <p>AP를 끌어서 옮기고, 벽이나 지점을 눌러 선택합니다. Delete 키로 삭제합니다.</p>
+          <h4>AP 제품</h4>
+          <div class="oldinput">Cisco <i>▾</i></div>
+          <div class="oldlistbox">
+            <div class="sel">CW9166I</div><div>C9130AXI</div><div>MR44</div><div>AP45</div><div>AP-635</div>
+          </div>
+          <p style="color:#a65a00">Wi-Fi 6E\n안테나 이득 4 / 5 / 6 dBi\n(2.4 / 5 / 6 GHz)\n제조사 자료 기준</p>
+          <h4>벽 재질</h4>
+          <div class="oldinput">석고보드 (5GHz -4 dB) <i>▾</i></div>
+        </div>
+        <div class="oldcanvas">
+          <canvas id="oldHeat"></canvas>
+          <div class="legend-old"><div style="display:flex;gap:6px;align-items:center"><b style="width:64px;height:14px;background:#be1c30;display:inline-block"></b><div class="bar"></div></div>
+            <div style="display:flex;justify-content:space-between;padding-left:80px;padding-right:14px"><span>음영 -67 미만</span><span>-67</span><span>-45 dBm 이상</span></div></div>
+        </div>
+        <div class="oldright">
+          <h4 style="margin-top:0">분석 결과</h4>
+          <div class="oldstat">커버리지 86.4%</div>
+          <div class="oldstat2">음영 면적  41.2 m²
+분석 면적  312.0 m²
+AP 3대 · 벽 24개 · 실측 12곳
+예측과 실측 차이  평균 4.8 dB</div>
+          <h4>표시 설정</h4>
+          <div class="oldfield"><label>보기</label><div class="oldinput" style="flex:1;margin:0">예측 신호 <i>▾</i></div></div>
+          <div class="oldfield"><label>주파수 대역</label><div class="oldinput" style="flex:1;margin:0">5 GHz <i>▾</i></div></div>
+          <div class="oldfield"><label>음영 기준 (dBm)</label><div class="oldinput" style="flex:1;margin:0">-67 <i>▲▼</i></div></div>
+          <div class="oldfield"><label>공간 유형</label><div class="oldinput" style="flex:1;margin:0">일반 사무실 <i>▾</i></div></div>
+          <div class="oldfield"><label>실측 SSID</label><div class="oldinput" style="flex:1;margin:0">(모든 SSID) <i>▾</i></div></div>
+          <h4>선택한 AP</h4>
+          <div class="oldstat2" style="margin-bottom:4px">Cisco CW9166I</div>
+          <div class="oldfield"><label>이름</label><div class="oldinput" style="flex:1;margin:0">1F-Cisco-01</div></div>
+          <div class="oldfield"><label>설치 높이 (m)</label><div class="oldinput" style="flex:1;margin:0">3.0 <i>▲▼</i></div></div>
+          <div class="oldfield"><label>5 GHz 출력 (dBm)</label><div class="oldinput" style="flex:1;margin:0">18 <i>▲▼</i></div></div>
+        </div>
+      </div>
+      <div class="oldstatusbar"><span>축척을 설정했습니다. 도면 크기 48.0 × 30.0 m</span><span>24.0, 18.0 m   예측 -62 dBm (1F-Aruba-01)</span></div>`;
+    app.querySelector('.oldbody').style.height = 'calc(860px - 26px - 24px)';
+    w.appendChild(app);
+    requestAnimationFrame(()=> drawPlan($('#oldHeat', w), false));
+    return w;
+  }
+
+  // ---------- 개선 후: 음영 분석기 ----------
+  function afterPlanner(){
+    const w = el('div','win');
+    const app = el('div','appw p-app');
+    app.innerHTML = `<div class="p-menu"><span>파일</span><span>보기</span></div>
+      <div class="p-head">
+        <div class="brand">${icon.ap}</div>
+        <div><div class="ttl">Wi-Fi 음영지역 분석기</div><div class="stl">2D 도면 AP 배치 · 신호 예측 · 현장 실측</div></div>
+        <div class="stats">
+          <div class="p-stat"><div class="c">커버리지</div><div class="v" id="cov" style="color:var(--lv3)">86.4%</div></div>
+          <div class="p-stat"><div class="c">음영 면적</div><div class="v">41.2 m²</div></div>
+          <div class="p-stat"><div class="c">분석 면적</div><div class="v">312 m²</div></div>
+          <div class="p-stat"><div class="c">AP / 실측</div><div class="v">3 / 12</div></div>
+        </div>
+        <button class="tbtn">${icon.folder}<span>도면</span></button>
+        <button class="tbtn">${icon.check}<span>저장</span></button>
+        <button class="tbtn primary">${icon.export}<span>리포트</span></button>
+      </div>
+      <div class="p-body">
+        <div class="rail">
+          <button aria-pressed="true">${icon.target}<span>선택</span></button>
+          <button>${icon.ap}<span>AP</span></button>
+          <div class="gap"></div>
+          <button>${icon.wall}<span>벽</span></button>
+          <button>${icon.area}<span>범위</span></button>
+          <button>${icon.ruler}<span>축척</span></button>
+          <button>${icon.wifi}<span>실측</span></button>
+        </div>
+        <div class="p-left">
+          <div class="card p-card">
+            <h5>AP 제품</h5>
+            <div class="cs">제조사</div>
+            <div class="p-sel">Cisco <span>▾</span></div>
+            <div class="cs">모델</div>
+            <div class="p-model">
+              <div class="sel">CW9166I <em>6 GHz</em></div>
+              <div>C9130AXI <em>6 GHz</em></div>
+              <div>MR44</div>
+              <div>AP45 <em>6 GHz</em></div>
+              <div>AP-635 <em>6 GHz</em></div>
+            </div>
+            <div class="p-info">Wi-Fi 6E · 안테나 이득 4 / 5 / 6 dBi<br>(2.4 / 5 / 6 GHz)<br>제조사 자료 기준</div>
+            <div class="cs">벽 재질</div>
+            <div class="p-sel">석고보드 · 5GHz -4dB <span>▾</span></div>
+            <div class="p-note">AP를 끌어서 옮기고, 벽이나 지점을 눌러 고릅니다.<br>Delete로 삭제.</div>
+          </div>
+        </div>
+        <div class="p-canvas" id="pcanvas">
+          <canvas id="pHeat"></canvas>
+          <div class="p-legend">
+            <div class="cap2"><span>신호 세기</span><span>dBm</span></div>
+            <div class="grad"></div>
+            <div class="ticks"><span>-67</span><span>-60</span><span>-50</span><span>-45</span></div>
+            <div class="dead"><b></b>약전계 -67 미만 <span style="margin-left:auto">AP 3대</span></div>
+            <div style="margin-top:6px;font-size:9.5px">예측 히트맵 · 로그거리 모델</div>
+          </div>
+          <div class="p-zoom">
+            <button title="확대">${icon.plus}</button>
+            <button title="축소">${icon.minus}</button>
+            <button title="전체 보기">${icon.grid}</button>
+          </div>
+        </div>
+        <div class="p-right">
+          <div class="card p-card">
+            <h5>분석 결과</h5>
+            <div class="p-ring">
+              <svg width="84" height="84" viewBox="0 0 84 84">
+                <circle cx="42" cy="42" r="34" fill="none" stroke="rgba(102,113,127,.26)" stroke-width="6" stroke-linecap="round" stroke-dasharray="160 214" transform="rotate(135 42 42)"/>
+                <circle id="pRing" cx="42" cy="42" r="34" fill="none" stroke="var(--lv3)" stroke-width="6" stroke-linecap="round" stroke-dasharray="138 214" transform="rotate(135 42 42)"/>
+              </svg>
+              <div><div class="num" id="pCov">86.4%</div><div style="font-size:10px;color:var(--mute)">커버리지</div></div>
+            </div>
+            <div style="margin-top:8px">
+              <div class="p-line"><span>음영 면적</span><b style="color:var(--lv1)">41.2 m²</b></div>
+              <div class="p-line"><span>분석 면적</span><b>312 m²</b></div>
+              <div class="p-line"><span>예측–실측 차이</span><b>4.8 dB</b></div>
+            </div>
+            <div class="p-note">축척 설정됨 · 기준 -67 dBm</div>
+          </div>
+          <div class="card p-card">
+            <h5>표시 설정</h5>
+            <div class="cs">보기</div><div class="p-sel">예측 신호 <span>▾</span></div>
+            <div class="cs">주파수 대역</div><div class="p-sel">5 GHz <span>▾</span></div>
+            <div class="cs">음영 기준</div><div class="p-sel">-67 dBm <span>▴▾</span></div>
+            <div class="cs">공간 유형</div><div class="p-sel">일반 사무실 <span>▾</span></div>
+          </div>
+          <div class="card p-card">
+            <h5>선택한 AP</h5>
+            <div class="p-note" style="margin-top:2px">Cisco CW9166I</div>
+            <div class="cs">이름</div><div class="p-sel">1F-Cisco-01</div>
+            <div class="cs">설치 높이</div><div class="p-sel">3.0 m <span>▴▾</span></div>
+            <div class="cs">5 GHz 출력</div><div class="p-sel">18 dBm <span>▴▾</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="foot"><span class="dot"></span><span id="pfoot" style="margin-left:8px">음영 41.2 m² · 분석 312 m² · 기준 -67 dBm</span>
+        <div style="margin-left:auto;display:flex;gap:6px"><span class="chip2">AP 3</span><span class="chip2">벽 24</span><span class="chip2">실측 12</span></div></div>`;
+    w.appendChild(app);
+    requestAnimationFrame(()=>{
+      drawPlan($('#pHeat', w), true, ()=> { $('#pRing', w).setAttribute('stroke-dasharray','138 214'); });
+    });
+    return w;
+  }
+
+  // 도면 + 히트맵 (개선 전/후 공용) — 실제 앱의 Rf.Compute 결과를 흉내낸다
+  function drawPlan(canvas, premium, done){
+    if(!canvas) return;
+    const host = canvas.parentElement;
+    const rect = host.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio||1);
+    const W = Math.max(400, Math.round(rect.width)), H = Math.max(300, Math.round(rect.height));
+    canvas.width = W*dpr; canvas.height = H*dpr;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+    const g = canvas.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+
+    const planW = 48, planH = 30;
+    const zoom = Math.min((W-40)/planW, (H-40)/planH);
+    const ox = (W - planW*zoom)/2, oy = (H - planH*zoom)/2;
+    const P = (x,y)=>[ox + x*zoom, oy + y*zoom];
+
+    const aps = [{x:12,y:15,name:'1F-Cisco-01'},{x:31,y:8,name:'1F-Aruba-01'},{x:33,y:23,name:'1F-Mist-01'}];
+    const walls = [];
+    const box = (x,y,w,h,m)=> walls.push([x,y,x+w,y,m],[x+w,y,x+w,y+h,m],[x+w,y+h,x,y+h,m],[x,y+h,x,y,m]);
+    box(2,2,44,26,4); box(20,11,8,8,4); box(2,2,12,9,0); box(14,2,10,9,1); box(34,2,12,12,3); box(2,19,14,9,0);
+
+    // 배경
+    if(premium){
+      const bg = g.createLinearGradient(0,0,0,H);
+      bg.addColorStop(0,'#0e1116'); bg.addColorStop(1,'#0b0e13');
+      g.fillStyle = bg; g.fillRect(0,0,W,H);
+      g.strokeStyle='rgba(255,255,255,.045)'; g.lineWidth=1;
+      for(let x=0;x<planW;x+=1){ const a=P(x,0), b=P(x,planH); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+      for(let y=0;y<planH;y+=1){ const a=P(0,y), b=P(planW,y); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+    } else {
+      g.fillStyle='#ffffff'; g.fillRect(...P(0,0), planW*zoom, planH*zoom);
+      g.strokeStyle='#eceff3';
+      for(let x=0;x<planW;x+=1){ const a=P(x,0), b=P(x,planH); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+      for(let y=0;y<planH;y+=1){ const a=P(0,y), b=P(planW,y); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+    }
+
+    // 히트맵 필드를 작은 해상도로 계산 → 확대 드로잉 (실제 앱과 같은 방식)
+    const cols = 240, rows = Math.round(240*planH/planW);
+    const off = document.createElement('canvas'); off.width=cols; off.height=rows;
+    const og = off.getContext('2d');
+    const img = og.createImageData(cols, rows);
+    const stops = premium ? [[255,93,108],[255,154,61],[242,198,61],[95,209,106],[17,201,160]]
+                          : [[190,28,48],[245,196,40],[132,192,58],[12,128,84]];
+    function colorFor(v, thr){
+      if(v < thr) return premium ? [178,255,93,108] : [190,28,48];
+      const t = Math.max(0, Math.min(1, (v - thr)/( -45 - thr)));
+      const pos = t*(stops.length-1), i = Math.min(stops.length-2, Math.floor(pos)), k = pos-i;
+      const a = stops[i], b = stops[i+1];
+      return [Math.round(a[0]+(b[0]-a[0])*k), Math.round(a[1]+(b[1]-a[1])*k), Math.round(a[2]+(b[2]-a[2])*k), premium?178:145];
+    }
+    const thr = -67;
+    for(let j=0;j<rows;j++){
+      for(let i=0;i<cols;i++){
+        const x = (i+0.5)/cols*planW, y=(j+0.5)/rows*planH;
+        let best = -200;
+        aps.forEach(ap=>{
+          const d = Math.max(1, Math.hypot(ap.x-x, ap.y-y, 1.5));
+          const loss = 20*Math.log10(5500) - 27.55 + 10*2.6*Math.log10(d);
+          let v = 18 + 5 - loss;
+          // 간단한 벽 감쇠: 코어(20..28, 11..19) 내부는 -12 dB
+          if(x>20 && x<28 && y>11 && y<19) v -= 12;
+          if(x>34 && y<14) v -= 6;
+          best = Math.max(best, v);
+        });
+        const c = colorFor(Math.max(-100,best), thr);
+        const idx = (j*cols+i)*4;
+        img.data[idx]=c[0]; img.data[idx+1]=c[1]; img.data[idx+2]=c[2]; img.data[idx+3]=c[3];
+      }
+    }
+    og.putImageData(img,0,0);
+
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    const reveal = { v: premium ? 0 : 1 };
+
+    function frame(){
+      g.setTransform(dpr,0,0,dpr,0,0);
+      // 배경 다시
+      if(premium){
+        g.fillStyle='#0e1116'; g.fillRect(0,0,W,H);
+        g.strokeStyle='rgba(255,255,255,.045)';
+        for(let x=0;x<planW;x+=1){ const a=P(x,0), b=P(x,planH); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+        for(let y=0;y<planH;y+=1){ const a=P(0,y), b=P(planW,y); g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); }
+      }
+      const [px,py] = P(0,0);
+      g.save();
+      g.beginPath(); g.rect(px,py,planW*zoom*Math.max(0.001,reveal.v),planH*zoom); g.clip();
+      g.drawImage(off, px, py, planW*zoom, planH*zoom);
+      g.restore();
+      if(premium && reveal.v < 0.999){
+        const ex = px + planW*zoom*reveal.v;
+        const grd = g.createLinearGradient(ex-24,0,ex,0);
+        grd.addColorStop(0,'rgba(111,166,255,0)'); grd.addColorStop(1,'rgba(111,166,255,.55)');
+        g.fillStyle = grd; g.fillRect(ex-24, py, 24, planH*zoom);
+        g.strokeStyle='#6fa6ff'; g.lineWidth=1.6;
+        g.beginPath(); g.moveTo(ex,py); g.lineTo(ex,py+planH*zoom); g.stroke();
+      }
+      // 외곽/벽
+      g.strokeStyle = premium ? 'rgba(255,255,255,.32)' : 'rgba(150,158,170,.85)';
+      g.lineWidth = 1;
+      g.strokeRect(...P(0,0), planW*zoom, planH*zoom);
+      walls.forEach(([x1,y1,x2,y2,m])=>{
+        const a=P(x1,y1), b=P(x2,y2);
+        const colors = ['#7882a0','#2896c8','#96643a','#aa5032','#32373f','#78288c'];
+        g.strokeStyle = premium ? colors[m] : colors[m];
+        g.lineWidth = Math.max(2, zoom*0.16);
+        g.lineCap='round';
+        g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
+      });
+      // 분석 범위
+      g.save(); g.setLineDash([5,4]); g.strokeStyle = premium ? 'rgba(111,166,255,.65)' : 'rgba(0,103,192,.8)'; g.lineWidth=1.4;
+      g.strokeRect(...P(2,2), 44*zoom, 26*zoom); g.restore();
+
+      // AP
+      const now = performance.now();
+      aps.forEach((ap,i)=>{
+        const p = P(ap.x,ap.y);
+        const r = premium ? 11 : 14;
+        if(premium){
+          const ph = ((now/2400)+i*0.33)%1;
+          g.strokeStyle = `rgba(76,141,255,${(0.5*(1-ph)).toFixed(3)})`;
+          g.lineWidth = 1.6;
+          g.beginPath(); g.arc(p[0],p[1], r+6+12*ph, 0, 7); g.stroke();
+          const gg = g.createRadialGradient(p[0],p[1],0,p[0],p[1],r+9);
+          gg.addColorStop(0,'rgba(76,141,255,.35)'); gg.addColorStop(1,'rgba(76,141,255,0)');
+          g.fillStyle=gg; g.beginPath(); g.arc(p[0],p[1],r+9,0,7); g.fill();
+        }
+        const vc = ['#1f4f8f','#2a7a72','#6a3a9a'][i];
+        g.fillStyle = vc;
+        g.beginPath(); g.arc(p[0],p[1],r,0,7); g.fill();
+        g.strokeStyle = premium ? 'rgba(255,255,255,.65)' : '#fff'; g.lineWidth=1.6;
+        g.beginPath(); g.arc(p[0],p[1],r,0,7); g.stroke();
+        g.fillStyle = '#fff'; g.font = `700 ${Math.round(r*0.95)}px Segoe UI, sans-serif`; g.textAlign='center'; g.textBaseline='middle';
+        g.fillText(['C','A','M'][i], p[0], p[1]+0.5);
+        g.font = `700 ${premium?10:11}px Segoe UI, sans-serif`;
+        const label = ap.name;
+        const tw = g.measureText(label).width;
+        if(premium){
+          g.fillStyle='rgba(8,10,14,.85)'; g.fillRect(p[0]-tw/2-3, p[1]+r+3, tw+6, 14);
+        } else {
+          g.fillStyle='rgba(255,255,255,.9)'; g.fillRect(p[0]-tw/2-3, p[1]+r+2, tw+6, 13);
+        }
+        g.fillStyle = premium ? '#e9eef6' : '#1c2129'; g.textBaseline='top';
+        g.fillText(label, p[0], p[1]+r+4);
+      });
+
+      // 실측 지점
+      if(premium){
+        [[6,6],[10,9],[16,6],[24,7],[30,5],[38,7],[8,24],[18,23],[26,24],[36,25],[22,15],[40,18]].forEach(([x,y])=>{
+          const p=P(x,y);
+          g.fillStyle='#11c9a0'; g.beginPath(); g.arc(p[0],p[1],4.2,0,7); g.fill();
+          g.strokeStyle='rgba(255,255,255,.8)'; g.lineWidth=1.2; g.stroke();
+        });
+      }
+
+      // 축척 막대
+      if(premium){
+        const a = P(planW,planH), len = 5*zoom;
+        const x = a[0]-len-16, y = a[1]-18;
+        g.strokeStyle='rgba(233,238,246,.7)'; g.lineWidth=1.4;
+        g.beginPath(); g.moveTo(x,y); g.lineTo(x+len,y); g.moveTo(x,y-4); g.lineTo(x,y+2); g.moveTo(x+len,y-4); g.lineTo(x+len,y+2); g.stroke();
+        g.fillStyle='#e9eef6'; g.font='10px Segoe UI'; g.textAlign='center'; g.textBaseline='bottom';
+        g.fillText('5 m', x+len/2, y-5);
+      }
+
+      if(premium && reveal.v < 0.999 && state.motion){
+        reveal.v = Math.min(1, reveal.v + 0.05);
+        rafs.push(requestAnimationFrame(frame));
+      }
+      if(premium && reveal.v >= 0.999 && state.motion){
+        // 박동만 계속
+        if(!canvas._pulsing){ canvas._pulsing = true; const loop = ()=>{ if(!document.body.contains(canvas)) return; if(!state.motion){canvas._pulsing=false; return;} frame(); rafs.push(requestAnimationFrame(loop)); }; loop(); }
+      }
+    }
+    if(state.motion) requestAnimationFrame(frame); else { reveal.v = 1; frame(); }
+  }
+
+  // ---------- 화면 조립 ----------
+  function build(){
+    const stage = $('#stage');
+    stage.innerHTML = '';
+    rafs.forEach(id=>{ cancelAnimationFrame(id); try{ clearTimeout(id); }catch(e){} });
+    rafs = [];
+    live = state.motion ? 1 : 0;
+
+    const parts = [];
+    if(state.mode === 'both'){
+      const row = el('div','row');
+      const c1 = el('div','col'), c2 = el('div','col');
+      const cap1 = el('div','caption'); cap1.innerHTML = `<h2>개선 전</h2><span class="hint">기본 컨트롤 + 흰 카드 · 정지 상태</span>`;
+      const cap2 = el('div','caption'); cap2.innerHTML = `<h2>개선 후</h2><span class="hint">다크 프리미엄 · 살아 있는 계측기</span>`;
+      c1.appendChild(cap1); c1.appendChild(el('div','frame old')).appendChild(state.app==='signal'?beforeSignal():beforePlanner());
+      c2.appendChild(cap2); c2.appendChild(el('div','frame')).appendChild(state.app==='signal'?afterSignal():afterPlanner());
+      row.appendChild(c1); row.appendChild(c2);
+      const stageEl = el('div','stage'); stageEl.appendChild(row); stage.appendChild(stageEl);
+    } else {
+      const cap = el('div','caption');
+      cap.innerHTML = state.mode==='after'
+        ? `<h2>개선 후</h2><span class="hint">${state.app==='signal'?'실시간 계측 대시보드 · 애니메이션 동작':'도면 캔버스 · 히트맵 스윕 + AP 박동'}</span>`
+        : `<h2>개선 전</h2><span class="hint">${state.app==='signal'?'원본 UI 구조 그대로':'원본 UI 구조 그대로'}</span>`;
+      const st = el('div','stage'+(state.calls?'':' hidecalls'));
+      const frame = el('div','frame'+(state.mode==='before'?' old':''));
+      frame.appendChild(state.mode==='after' ? (state.app==='signal'?afterSignal():afterPlanner()) : (state.app==='signal'?beforeSignal():beforePlanner()));
+      st.appendChild(cap); st.appendChild(frame);
+      stage.appendChild(st);
+    }
+    fitZoom();
+    addCallouts();
+  }
+
+  function fitZoom(){
+    const embed = document.body.classList.contains('embed');
+    const width = Math.min(document.documentElement.clientWidth - (embed?0:40), 1500);
+    const z = state.mode==='both' ? Math.max(0.34, Math.min(0.56, (width/2-20)/1300)) : Math.max(0.42, Math.min(1, width/1300));
+    document.querySelectorAll('.win').forEach(w=> w.style.setProperty('--z', z.toFixed(3)));
+  }
+
+  const NOTES = {
+    signal: [
+      ['시선이 먼저 가는 값 하나', 'SSID·dBm·등급만 42pt로 키우고 나머지는 캡션으로 내렸습니다. 30pt→42pt, 단위는 분리.'],
+      ['숫자가 흔들리지 않음', '고정폭(tabular) 숫자 + 스프링 보간. 값이 바뀌어도 자리가 고정됩니다.'],
+      ['상태가 보이는 계측기', '링게이지·막대·LIVE 점이 측정 중임을 계속 표시합니다(60fps, 모션 끄기 지원).'],
+      ['흐르는 그래프', '최근 N초 윈도우·Catmull-Rom 보간·그라데이션 영역·약전계 기준선·호버 십자선.'],
+      ['권장 채널', '2.4/5/6GHz 점유를 계산해 가장 덜 붐비는 채널을 액센트로 표시합니다.'],
+      ['읽히는 표', '정렬·검색·대역 필터. 신호는 글자가 아니라 막대로, 연결 AP는 점으로 구분.']
+    ],
+    planner: [
+      ['아이콘 레일', 'RadioButton 6개 → 아이콘 + 라벨. 활성 도구에 액센트 바와 배경.'],
+      ['히트맵 스윕', '계산 결과가 좌→우로 훑고 지나가며 채워집니다(진행 중 밝은 엣지).'],
+      ['AP 박동', 'AP 마커에 주기적 링 — 도구가 살아 있다는 신호. 선택 시 액센트 링.'],
+      ['부유 범례', '도면 위 흰 사각형 → 반투명 카드. 그라데이션·눈금·약전계 스와치.'],
+      ['KPI 헤더', '커버리지/음영/분석면적/AP·실측을 상단에 고정. 링과 숫자가 함께 카운트업.']
+    ]
+  };
+  const POINTS = {
+    signal: [[250,96],[330,150],[860,120],[70,392],[1000,392],[300,706]],
+    planner: [[104,186],[470,250],[560,430],[150,600],[545,62]]
+  };
+
+  function addCallouts(){
+    document.querySelectorAll('.annot,.annots').forEach(n=> n.remove());
+    if(state.mode !== 'after' || !state.calls) return;
+    const frame = $('#stage .frame'); if(!frame) return;
+    const pts = POINTS[state.app];
+    pts.forEach(([left,top],i)=>{
+      const b = el('div','annot', String(i+1));
+      b.style.left = (left/1280*100)+'%'; b.style.top = (top/860*100)+'%';
+      frame.appendChild(b);
+    });
+    const list = el('div','annots');
+    list.innerHTML = NOTES[state.app].map(([t,d],i)=>`<div><b>${i+1}</b><span><strong style="color:var(--ink)">${t}</strong> — ${d}</span></div>`).join('');
+    frame.parentElement.appendChild(list);
+  }
+
+  // ---------- 컨트롤 ----------
+  function press(btn){
+    const group = btn.parentElement;
+    [...group.querySelectorAll('button')].forEach(b=> b.setAttribute('aria-pressed', b===btn?'true':'false'));
+  }
+  document.querySelectorAll('#appseg button').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.app = b.dataset.app; press(b); syncSeg(); build(); });
+  });
+  document.querySelectorAll('#modeseg button').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.mode = b.dataset.mode; press(b); syncSeg(); build(); });
+  });
+  function syncSeg(){
+    document.querySelectorAll('#appseg button').forEach(b=> b.setAttribute('aria-pressed', b.dataset.app===state.app?'true':'false'));
+  }
+  const mt = $('#motion');
+  mt.addEventListener('click', ()=>{ state.motion = mt.getAttribute('aria-pressed')!=='true'; mt.setAttribute('aria-pressed', state.motion?'true':'false'); build(); });
+  mt.addEventListener('keydown', e=>{ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); mt.click(); } });
+  const cl = $('#calls');
+  cl.addEventListener('click', ()=>{ state.calls = cl.getAttribute('aria-pressed')!=='true'; cl.setAttribute('aria-pressed', state.calls?'true':'false'); addCallouts(); });
+  cl.addEventListener('keydown', e=>{ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); cl.click(); } });
+  window.addEventListener('resize', ()=>{ fitZoom(); });
+
+  // 해시로 화면 고정 (공유·스크린샷용): #app=planner&mode=both&motion=0&calls=0
+  (function fromHash(){
+    const h = new URLSearchParams(location.hash.replace(/^#/,''));
+    if(h.get('app')==='planner'||h.get('app')==='signal') state.app = h.get('app');
+    if(['after','before','both'].includes(h.get('mode'))) state.mode = h.get('mode');
+    if(h.get('motion')==='0') state.motion = false;
+    if(h.get('calls')==='0') state.calls = false;
+    if(h.get('embed')==='1'){ document.body.classList.add('embed'); state.calls = false; }
+    document.querySelectorAll('#appseg button').forEach(b=> b.setAttribute('aria-pressed', b.dataset.app===state.app?'true':'false'));
+    document.querySelectorAll('#modeseg button').forEach(b=> b.setAttribute('aria-pressed', b.dataset.mode===state.mode?'true':'false'));
+    mt.setAttribute('aria-pressed', state.motion?'true':'false');
+    cl.setAttribute('aria-pressed', state.calls?'true':'false');
+  })();
+
+  build();
+})();
+</script>
+</body>
+</html>
