@@ -1,4 +1,6 @@
 import csv
+import math
+from pathlib import Path
 import os
 import tempfile
 import time
@@ -52,6 +54,19 @@ class Planner(unittest.TestCase):
         QTest.mouseMove(c, self.pt(*b))
         pump(30)
         QTest.mouseRelease(c, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, self.pt(*b))
+
+    def test_report_includes_image_and_escaped_ap_list(self):
+        self.w.new_project(rf.demo_project())
+        self.w.project.Aps[0].Name = "=<example>"
+        with tempfile.TemporaryDirectory() as path:
+            report = self.w.export_report(Path(path))
+            report_html = report.read_text(encoding="utf-8")
+            self.assertIn("data:image/png;base64,", report_html)
+            self.assertIn("=&lt;example&gt;", report_html)
+            with (report.parent / "access-points.csv").open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.reader(stream))
+            self.assertEqual(rows[1][0], "'=<example>")
+            self.assertTrue(QImage(str(report.parent / "coverage.png")).width() > 0)
 
     def test_every_vendor_can_be_placed(self):
         self.w.set_tool(pa.PLACE_AP)
@@ -221,6 +236,21 @@ class SignalWindow(unittest.TestCase):
         with open(path, encoding="utf-8-sig", newline="") as f:
             self.assertEqual(len(list(csv.reader(f))), 13)
         w.close()
+
+    def test_filter_and_smoothing_preserve_missing_samples(self):
+        w = signal_app.SignalWindow(wifi.Backend(fake_runner), autostart=False)
+        self.addCleanup(w.close)
+        w.on_sample(self.sample())
+        w.search.setText("does-not-exist")
+        self.assertEqual(w.table.rowCount(), 0)
+        w.search.clear()
+        self.assertEqual(w.table.rowCount(), 4)
+        w.graph.data.clear()
+        w.graph.data.extend([-40, -60, math.nan, -90])
+        values = list(w.graph.moving_average())
+        self.assertEqual(values[:2], [-40, -50])
+        self.assertTrue(math.isnan(values[2]))
+        self.assertEqual(values[3], -90)
 
     def test_disconnected_and_blocked_ping(self):
         w = signal_app.SignalWindow(wifi.Backend(fake_runner), autostart=False)

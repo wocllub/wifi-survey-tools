@@ -164,3 +164,21 @@ final class PlanStoreTests: XCTestCase {
         XCTAssertEqual(PlanStore.csvField("a\"b"), "\"a\"\"b\"")
     }
 }
+
+
+final class ReportTests: XCTestCase {
+    @MainActor
+    func testReportEscapesAPNamesAndIncludesCoverageImage() throws {
+        let store = PlanStore()
+        var project = DemoProject.make()
+        project.Aps[0].Name = "=<example>"
+        store.newProject(project)
+        store.computeNow()
+        let csv = try XCTUnwrap(String(data: store.accessPointCSV(), encoding: .utf8))
+        XCTAssertTrue(csv.contains("\"'=<example>\""))
+        let report = try XCTUnwrap(String(data: store.reportHTML(coverageImage: "aW1hZ2U="), encoding: .utf8))
+        XCTAssertTrue(report.contains("=&lt;example&gt;"))
+        XCTAssertTrue(report.contains("data:image/png;base64,aW1hZ2U="))
+        XCTAssertTrue(report.contains("커버리지"))
+    }
+}

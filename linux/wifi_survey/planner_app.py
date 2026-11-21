@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import base64
 import csv
+import html
 import math
 import sys
 from datetime import datetime
+from pathlib import Path
+from tempfile import mkdtemp
 from typing import Callable, List, Optional
 
 from PySide6.QtCore import QBuffer, QIODevice, QObject, QPointF, QRectF, QRunnable, Qt, QThreadPool, QTimer, Signal
@@ -402,6 +405,7 @@ class PlannerWindow(QMainWindow):
         m.addSeparator()
         add(m, "분석 결과 이미지로 내보내기...", self.export_png_dialog, "Ctrl+E")
         add(m, "실측 데이터 CSV로 내보내기...", self.export_csv_dialog)
+        add(m, "분석 리포트 내보내기...", self.export_report_dialog)
         e = self.menuBar().addMenu("편집")
         add(e, "실행 취소", self.undo, "Ctrl+Z")
         add(e, "분석 범위 해제", self.clear_area)
@@ -989,6 +993,42 @@ class PlannerWindow(QMainWindow):
             for n, s in enumerate(self.project.Points, 1):
                 for r in sorted(s.Readings, key=lambda a: a.Rssi, reverse=True):
                     w.writerow([n, s.Time, f"{s.X:.2f}", f"{s.Y:.2f}", csv_text(r.Ssid), r.Bssid, rf.BAND_NAMES[r.Band], r.Rssi])
+
+    def export_report_dialog(self):
+        directory = QFileDialog.getExistingDirectory(self, "리포트를 저장할 폴더 선택")
+        if directory:
+            try:
+                report = self.export_report(Path(directory))
+                self.statusBar().showMessage(f"내보냈습니다: {report}")
+            except OSError as ex:
+                self._warn("리포트를 내보낼 수 없습니다.", ex)
+
+    def export_report(self, parent: Path) -> Path:
+        directory = Path(mkdtemp(prefix="wifi-report-", dir=parent))
+        png = directory / "coverage.png"
+        self.export_png(str(png))
+        project = self.project
+        aps = [(ap.Name, ap.Vendor, ap.Model, f"{ap.X:.2f}", f"{ap.Y:.2f}") for ap in project.Aps]
+        columns = ("이름", "제조사", "모델", "X(m)", "Y(m)")
+        with (directory / "access-points.csv").open("w", newline="", encoding="utf-8-sig") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(columns)
+            writer.writerows((*map(csv_text, row[:3]), *row[3:]) for row in aps)
+        heat = self.frame.heat if self.frame else None
+        summary = (f"커버리지 {heat.coverage_pct:.1f}% · 음영 {heat.dead_m2:.1f} m²"
+                   if heat and heat.analyzed else "분석 데이터 없음")
+        headings = "".join(f"<th>{column}</th>" for column in columns)
+        rows = "".join("<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>" for row in aps)
+        image = base64.b64encode(png.read_bytes()).decode("ascii")
+        report = directory / "report.html"
+        report.write_text(f'''<!doctype html><html lang="ko"><meta charset="utf-8">
+<title>Wi-Fi 음영 분석</title>
+<style>body{{font:16px system-ui;margin:2em}}img{{max-width:100%}}th,td{{padding:.4em;text-align:left}}</style>
+<h1>Wi-Fi 음영 분석</h1><p>{summary} · {rf.BAND_NAMES[project.Band]} · 기준 {project.Threshold:.0f} dBm</p>
+<img src="data:image/png;base64,{image}" alt="커버리지 도면">
+<h2>액세스 포인트</h2><table><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table>
+</html>''', encoding="utf-8")
+        return report
 
     def _ask_distance(self, measured: float) -> Optional[float]:
         value, ok = QInputDialog.getDouble(self, "축척 설정", "두 점 사이의 실제 거리 (m)", measured, 0.1, 10000, 2)

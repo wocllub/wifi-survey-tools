@@ -402,6 +402,48 @@ final class PlanStore: ObservableObject {
         return try JSONEncoder().encode(copy)
     }
 
+    func accessPointCSV() -> Data {
+        var lines = ["이름,제조사,모델,X(m),Y(m)"]
+        for ap in project.Aps {
+            let labels = [ap.Name, ap.Vendor, ap.Model].map(Self.csvField)
+            let coordinates = [ap.X, ap.Y].map { String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), $0) }
+            lines.append((labels + coordinates).joined(separator: ","))
+        }
+        return Data(("\u{FEFF}" + lines.joined(separator: "\r\n") + "\r\n").utf8)
+    }
+
+    func reportHTML(coverageImage: String) -> Data {
+        let summary: String
+        if let heat, heat.analyzed > 0 {
+            summary = String(format: "커버리지 %.1f%% · 음영 %.1f m²", heat.coveragePct, heat.deadM2)
+        } else {
+            summary = "분석 데이터 없음"
+        }
+        let rows = project.Aps.map { ap in
+            let cells = [ap.Name, ap.Vendor, ap.Model,
+                         String(format: "%.2f", ap.X), String(format: "%.2f", ap.Y)]
+            return "<tr>" + cells.map { "<td>\(Self.htmlField($0))</td>" }.joined() + "</tr>"
+        }.joined()
+        let document = """
+        <!doctype html><html lang="ko"><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Wi-Fi 음영 분석</title>
+        <style>body{font:16px system-ui;margin:2em}img{max-width:100%}th,td{padding:.4em;text-align:left}</style>
+        <h1>Wi-Fi 음영 분석</h1><p>\(summary) · \(RF.bandNames[project.Band])</p>
+        <img src="data:image/png;base64,\(coverageImage)" alt="커버리지 도면">
+        <h2>액세스 포인트</h2><table>
+        <thead><tr><th>이름</th><th>제조사</th><th>모델</th><th>X(m)</th><th>Y(m)</th></tr></thead>
+        <tbody>\(rows)</tbody></table></html>
+        """
+        return Data(document.utf8)
+    }
+
+    private static func htmlField(_ value: String) -> String {
+        value.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
     func surveyCSV() -> Data {
         var lines = ["지점,측정시각,X(m),Y(m),SSID,BSSID,대역,신호(dBm)"]
         for (index, point) in project.Points.enumerated() {

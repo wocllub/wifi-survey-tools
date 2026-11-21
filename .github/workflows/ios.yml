@@ -37,5 +37,16 @@ jobs:
           xcodebuild test \
             -project WifiPlanner.xcodeproj \
             -scheme WifiPlanner \
+            -derivedDataPath "$RUNNER_TEMP/wifi-ios" \
             -destination "id=${{ steps.simulator.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO
+      - name: Package simulator app
+        run: |
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/wifi-ios/Build/Products/Debug-iphonesimulator/WifiPlanner.app" \
+            "$RUNNER_TEMP/WifiPlanner-iOS-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WifiPlanner-iOS-Simulator
+          path: ${{ runner.temp }}/WifiPlanner-iOS-Simulator.zip
+          if-no-files-found: error

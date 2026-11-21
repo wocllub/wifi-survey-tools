@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
-                               QMainWindow, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+                               QCheckBox, QComboBox, QLineEdit, QMainWindow, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
                                QWidget)
 
 from .rf import BAND_NAMES
@@ -216,6 +216,18 @@ class Graph(QFrame):
         self.setObjectName("card")
         self.setMinimumHeight(190)
         self.data = deque(maxlen=HISTORY)
+        self.previous = []
+        self.smoothing = False
+
+    def moving_average(self):
+        window = deque(maxlen=5)
+        for value in self.data:
+            if not math.isfinite(value):
+                window.clear()
+                yield math.nan
+                continue
+            window.append(value)
+            yield sum(window) / len(window)
 
     def add(self, value: float):
         self.data.append(value)
@@ -258,25 +270,35 @@ class Graph(QFrame):
 
         step = area.width() / (HISTORY - 1)
         data = list(self.data)
-        path = QPainterPath()
-        pen_down = False
-        for i, v in enumerate(data):
-            if math.isnan(v):
-                pen_down = False
-                continue
-            pt = QPointF(area.right() - (len(data) - 1 - i) * step, y(v))
-            if pen_down:
-                path.lineTo(pt)
-            else:
-                path.moveTo(pt)
-                pen_down = True
-        p.setPen(QPen(QColor(ACCENT), 2))
+        def draw_trace(values, pen):
+            path = QPainterPath()
+            pen_down = False
+            for i, value in enumerate(values):
+                if not math.isfinite(value):
+                    pen_down = False
+                    continue
+                point = QPointF(area.right() - (len(values) - 1 - i) * step, y(value))
+                if pen_down:
+                    path.lineTo(point)
+                else:
+                    path.moveTo(point)
+                    pen_down = True
+            p.setPen(pen)
+            p.drawPath(path)
+
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(path)
+        draw_trace(self.previous, QPen(QColor(MUTED), 2, Qt.PenStyle.DashLine))
+        data = list(self.moving_average()) if self.smoothing else data
+        draw_trace(data, QPen(QColor(ACCENT), 2))
         if data and not math.isnan(data[-1]):
             p.setBrush(QBrush(QColor(ACCENT)))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QPointF(area.right(), y(data[-1])), 4.5, 4.5)
+
+
+class NumericItem(QTableWidgetItem):
+    def __lt__(self, other):
+        return self.data(Qt.ItemDataRole.UserRole) < other.data(Qt.ItemDataRole.UserRole)
 
 
 class SignalWindow(QMainWindow):
@@ -315,10 +337,39 @@ class SignalWindow(QMainWindow):
         box.addLayout(grid)
         self.graph = Graph()
         box.addWidget(self.graph, 45)
+        graph_controls = QHBoxLayout()
+        self.settings = QSettings("WifiSurveyTools", "SignalChecker")
+        smoothing = QCheckBox("5초 이동평균")
+        self.graph.smoothing = self.settings.value("smoothing", False, type=bool)
+        smoothing.setChecked(self.graph.smoothing)
+        smoothing.toggled.connect(self.set_smoothing)
+        save = QPushButton("최근 3분 저장")
+        save.clicked.connect(self.save_session)
+        compare = QPushButton("이전 기록 비교")
+        compare.clicked.connect(self.load_session)
+        clear = QPushButton("비교 지우기")
+        clear.clicked.connect(self.clear_comparison)
+        for control in (smoothing, save, compare, clear):
+            graph_controls.addWidget(control)
+        graph_controls.addStretch()
+        box.addLayout(graph_controls)
         self.nearby_title = QLabel("주변 Wi-Fi")
         self.nearby_title.setFont(app_font(10.5, True))
         box.addWidget(self.nearby_title)
+        filters = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("SSID 또는 BSSID 검색")
+        self.search.textChanged.connect(self.filter_table)
+        self.band_filter = QComboBox()
+        self.band_filter.addItems(["전체 대역", *BAND_NAMES])
+        self.band_filter.currentIndexChanged.connect(self.filter_table)
+        self.channel_hint = QLabel()
+        filters.addWidget(self.search, 1)
+        filters.addWidget(self.band_filter)
+        filters.addWidget(self.channel_hint)
+        box.addLayout(filters)
         self.table = QTableWidget(0, 7)
+        self.table.setSortingEnabled(True)
         self.table.setHorizontalHeaderLabels(["네트워크 이름", "신호", "강도", "채널", "대역", "보안", "BSSID"])
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -344,6 +395,52 @@ class SignalWindow(QMainWindow):
         self.hold_until = 0.0
         if autostart:
             QTimer.singleShot(0, self.sampler.start)
+
+    def set_smoothing(self, enabled):
+        self.graph.smoothing = enabled
+        self.settings.setValue("smoothing", enabled)
+        self.graph.update()
+
+    def save_session(self):
+        path, _ = QFileDialog.getSaveFileName(self, "최근 신호 기록 저장", "session.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["rssi_dbm"])
+                writer.writerows([value if math.isfinite(value) else ""] for value in self.graph.data)
+        except OSError as error:
+            QMessageBox.warning(self, "기록 저장 오류", str(error))
+
+    def load_session(self):
+        path, _ = QFileDialog.getOpenFileName(self, "이전 기록 비교", "", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, newline="", encoding="utf-8-sig") as stream:
+                reader = csv.DictReader(stream)
+                if reader.fieldnames != ["rssi_dbm"]:
+                    raise ValueError("최근 3분 저장으로 만든 CSV를 선택해 주세요.")
+                previous = deque(maxlen=HISTORY)
+                for row in reader:
+                    raw = row["rssi_dbm"]
+                    value = float(raw) if raw else math.nan
+                    if raw and (not math.isfinite(value) or not -127 <= value <= 0):
+                        raise ValueError("신호 값 범위가 올바르지 않습니다.")
+                    previous.append(value)
+            self.graph.previous = list(previous)
+            self.graph.update()
+        except (OSError, ValueError, csv.Error) as error:
+            QMessageBox.warning(self, "기록 불러오기 오류", str(error))
+
+    def clear_comparison(self):
+        self.graph.previous = []
+        self.graph.update()
+
+    def filter_table(self, *_):
+        self.shown_version = -1
+        self.update_table(self.latest)
 
     def scan_now(self):
         self.sampler.request_scan()
@@ -407,14 +504,33 @@ class SignalWindow(QMainWindow):
         if not s.nearby_error:
             self.nearby_title.setText(f"주변 Wi-Fi · 액세스 포인트 {len(s.nearby)}개 (주변 AP 신호는 추정값)")
         scroll = self.table.verticalScrollBar().value()
-        self.table.setRowCount(len(s.nearby))
-        for r, b in enumerate(s.nearby):
+        query = self.search.text().strip().casefold()
+        band = self.band_filter.currentIndex() - 1
+        rows = [b for b in s.nearby if (band < 0 or b.band == band)
+                and (query in b.ssid.casefold() or query in b.bssid.casefold())]
+        observed = [b for b in s.nearby if b.band == 0 and b.channel > 0 and b.bssid != s.link.bssid]
+        if observed and not s.nearby_error:
+            # In 2.4 GHz, account for overlapping 20 MHz channels as well as co-channel APs.
+            def congestion(channel):
+                return sum(max(0, 5 - abs(channel - b.channel)) * 10 ** (b.rssi / 10) for b in observed)
+
+            recommended = min((1, 6, 11), key=congestion)
+            self.channel_hint.setText(f"2.4 GHz 권장 채널 {recommended}")
+        else:
+            self.channel_hint.clear()
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(rows))
+        for r, b in enumerate(rows):
             mine = b.bssid == s.link.bssid
             rssi = s.link.rssi if mine and s.link.rssi_exact else b.rssi
             name, color, _ = level_of(rssi)
             cells = [("● " if mine else "") + b.ssid, f"{rssi} dBm", name, str(b.channel), BAND_NAMES[b.band], b.security, b.bssid]
             for c, text in enumerate(cells):
-                item = QTableWidgetItem(text)
+                if c in (1, 3):
+                    item = NumericItem(text)
+                    item.setData(Qt.ItemDataRole.UserRole, rssi if c == 1 else b.channel)
+                else:
+                    item = QTableWidgetItem(text)
                 if c in (1, 2):
                     item.setForeground(color)
                 if c in (1, 3):
@@ -424,6 +540,7 @@ class SignalWindow(QMainWindow):
                     item.setFont(app_font(10, True))
                 self.table.setItem(r, c, item)
             self.table.setRowHeight(r, 26)
+        self.table.setSortingEnabled(True)
         self.table.verticalScrollBar().setValue(scroll)
 
     def toggle_log(self):

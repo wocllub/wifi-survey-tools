@@ -8,11 +8,11 @@ from typing import Tuple
 from PySide6.QtGui import QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
-BG = "#f3f5f8"
-INK = "#1c2129"
+BG = "#edf2f8"
+INK = "#132238"
 MUTED = "#626b78"
 BORDER = "#dee2e8"
-ACCENT = "#0067c0"
+ACCENT = "#0757a8"
 WARN = "#a65a00"
 
 STYLE = f"""
@@ -20,10 +20,10 @@ QMainWindow, QWidget#root, QScrollArea, QWidget#side {{ background: {BG}; }}
 QLabel {{ color: {INK}; background: transparent; }}
 QLabel[muted="true"] {{ color: {MUTED}; }}
 QLabel[head="true"] {{ font-weight: 700; padding-top: 8px; }}
-QFrame#card {{ background: white; border: 1px solid {BORDER}; border-radius: 6px; }}
-QToolButton {{ background: white; color: {INK}; border: 1px solid {BORDER}; border-radius: 4px; padding: 6px; }}
+QFrame#card {{ background: white; border: 1px solid {BORDER}; border-radius: 12px; }}
+QToolButton {{ background: white; color: {INK}; border: 1px solid {BORDER}; border-radius: 8px; padding: 6px; }}
 QToolButton:checked {{ background: #e3effb; border: 1px solid {ACCENT}; color: {ACCENT}; font-weight: 700; }}
-QPushButton {{ background: white; color: {INK}; border: 1px solid {BORDER}; border-radius: 4px; padding: 7px 14px; }}
+QPushButton {{ background: white; color: {INK}; border: 1px solid {BORDER}; border-radius: 8px; padding: 7px 14px; }}
 QPushButton:hover, QToolButton:hover {{ border-color: {ACCENT}; }}
 QTableWidget {{ background: white; color: {INK}; border: 1px solid {BORDER}; gridline-color: transparent; }}
 QHeaderView::section {{ background: white; color: {INK}; border: none; border-bottom: 1px solid {BORDER}; padding: 5px; }}

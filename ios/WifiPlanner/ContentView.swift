@@ -34,6 +34,9 @@ struct ContentView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 StatsBar(store: store)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                 PlanCanvasView(store: store)
                     .overlay(alignment: .bottomLeading) {
                         if store.project.View != 2 {
@@ -140,6 +143,10 @@ struct ContentView: View {
                 Divider()
                 Button("프로젝트 내보내기") { share("음영분석.wifiplan") { try store.projectData() } }
                 Button("결과 이미지 내보내기") { share("음영분석결과.png") { try renderPNG() } }
+                Menu("분석 리포트 내보내기") {
+                    Button("HTML 리포트") { share("wifi-report.html") { try renderReport() } }
+                    Button("AP 목록 CSV") { share("access-points.csv") { store.accessPointCSV() } }
+                }
                 Button("실측 CSV 내보내기") { share("실측데이터.csv") { store.surveyCSV() } }
                 Divider()
                 Button("예제 도면 열기") { store.newProject(DemoProject.make()) }
@@ -185,6 +192,11 @@ struct ContentView: View {
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    private func renderReport() throws -> Data {
+        let image = try renderPNG().base64EncodedString()
+        return store.reportHTML(coverageImage: image)
     }
 
     private func renderPNG() throws -> Data {
@@ -248,13 +260,14 @@ private struct ToolBarView: View {
                         Text(tool.title).font(.caption2)
                     }
                     .frame(maxWidth: .infinity, minHeight: 50)
+                    .contentShape(Rectangle())
                     .foregroundColor(store.tool == tool ? PlanColors.accent : .primary)
                     .background(store.tool == tool ? PlanColors.accent.opacity(0.12) : Color.clear)
                 }
                 .accessibilityAddTraits(store.tool == tool ? .isSelected : [])
             }
         }
-        .background(Color(.secondarySystemBackground))
+        .background(.regularMaterial)
     }
 }
 
